@@ -28,6 +28,21 @@
 #define ENC3_A 20
 #define ENC3_B 21
 
+#define DC1_PWM 4
+#define DC2_PWM 5
+#define DC3_PWM 6
+
+#define DC1_DIR 7
+#define DC2_DIR 8
+#define DC3_DIR 9
+
+#define LS1_NC 48
+#define LS1_NO 49
+#define LS2_NC 50
+#define LS2_NO 51
+#define LS3_NC 52
+#define LS3_NO 53
+
 //=======================================================
 //======             GLOBAL VARIABLES             =======
 //=======================================================
@@ -36,7 +51,11 @@ volatile long time2, temp2, counter2 = 0;
 volatile long time3, temp3, counter3 = 0;
 
 void setup() {
+  //-----------Start Serial Communication-------------
   Serial.begin(9600);
+
+  //-------------Define Pins--------------------------
+  //Interruput pins
   pinMode(ENC1_A, INPUT_PULLUP);  // internal pullup input pin 2
 
   pinMode(ENC1_B, INPUT_PULLUP);  // internal pullup input pin 3
@@ -48,6 +67,32 @@ void setup() {
   pinMode(ENC3_A, INPUT_PULLUP);  // internal pullup input pin 20
 
   pinMode(ENC3_B, INPUT_PULLUP);  // internal pullup input pin 21
+
+  //Limit switches
+  pinMode(LS1_NC, INPUT_PULLUP);
+
+  pinMode(LS1_NO, INPUT_PULLUP);
+
+  pinMode(LS2_NC, INPUT_PULLUP);
+
+  pinMode(LS2_NO, INPUT_PULLUP);
+
+  pinMode(LS3_NC, INPUT_PULLUP);
+
+  pinMode(LS3_NO, INPUT_PULLUP);
+
+  //DC Motor driver
+  pinMode(DC1_PWM, OUTPUT);
+
+  pinMode(DC2_PWM, OUTPUT);
+
+  pinMode(DC3_PWM, OUTPUT);
+
+  pinMode(DC1_DIR, OUTPUT);
+
+  pinMode(DC2_DIR, OUTPUT);
+
+  pinMode(DC3_DIR, OUTPUT);
 
   //----------------  //Setting up interrupt---------------------------
   //Encoder1 Ch.A rising pulse from encodenren activated ai0(). AttachInterrupt 0 is DigitalPin nr 2.
@@ -67,6 +112,8 @@ void setup() {
 
   //Encoder3 Ch.B rising pulse from encodenren activated ai1(). AttachInterrupt 5 is DigitalPin nr 21.
   attachInterrupt(digitalPinToInterrupt(ENC3_B), ai5, RISING);
+
+  //---------------------------Referenzfahrt-------------------------------------------------
 }
 
 void loop() {
