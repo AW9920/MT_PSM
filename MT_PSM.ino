@@ -50,6 +50,9 @@ volatile long time1, temp1, counter1 = 0;
 volatile long time2, temp2, counter2 = 0;
 volatile long time3, temp3, counter3 = 0;
 
+//State variables
+char state;
+
 void setup() {
   //-----------Start Serial Communication-------------
   Serial.begin(9600);
