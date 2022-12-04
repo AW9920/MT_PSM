@@ -50,15 +50,15 @@
 #define LS3_NC 52
 #define LS3_NO 53
 
-#define PI 3.1415926535897932384626433832795
+//#define PI 3.1415926535897932384626433832795
 
 //=======================================================
 //======             GLOBAL VARIABLES             =======
 //=======================================================
 
 //State of Development
-//String refDevStatus == "auto";   //Uncomment if auto reference works
-String refDevState = "manual";
+String refDevState = "auto";  //Uncomment if auto reference works
+//String refDevState = "manual";
 
 // Configure the motor driver.
 CytronMD motor1(PWM_DIR, DC1_PWM, DC1_DIR);  // PWM 1 = Pin 4, DIR 1 = Pin 7.
@@ -74,9 +74,11 @@ Servo servo_yaw2;
 Servo servos[4] = { servo_roll, servo_pitch, servo_yaw1, servo_yaw2 };
 
 //Servo variables
-int servo_val1,
-      servo_val2, servo_val3, servo_val4;
-int servo_off1, servo_off2, servo_off3, servo_off4;
+int servo_val1, servo_val2, servo_val3, servo_val4;
+int servo_val[4] = { servo_val1, servo_val2, servo_val3, servo_val4 };
+int servo_off1 = 99, servo_off2 = 89, servo_off3 = 92, servo_off4 = 115;
+int servo_off[4] = { servo_off1, servo_off2, servo_off3, servo_off4 };
+
 
 //Encoder constant parameters
 const float res_avago = 0.36;
@@ -100,10 +102,10 @@ bool refpos1, refpos2, refpos3;
 
 int p_counter1 = 0, p_counter2 = 0, p_counter3 = 0;
 int ref_counter1 = 0, ref_counter2 = 0, ref_counter3 = 0;
-const int threshold = 1;
+const int threshold = 10;
 
 float pos1, pos2, pos3;  //In angular position of axis
-float ref_offset1 = -40, ref_offset2 = -40, ref_offset3 = 0;
+float ref_offset1 = -25, ref_offset2 = -35, ref_offset3 = 0;
 
 //Transmission ration
 const float trans1 = 20.00;
@@ -120,6 +122,8 @@ int dir1, dir2, dir3;
 float kp, ki, kd;
 float target_pos1, target_pos2, target_pos3;
 float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
+float control_val1, control_val2, control_val3;
+float control_values[3] = { control_val1, control_val2, control_val3 };
 //Uncomment when working for all joints
 //float target_pos1, target_pos2, target_pos3, target_pos4, target_pos5, target_pos6, target_pos7;
 //float* target_pos[7] = { &target_pos1, &target_pos2, &target_pos3, &target_pos4, &target_pos5, &target_pos6, &target_pos7 };
@@ -143,6 +147,8 @@ void recvWithStartEndMarkers(void);
 void parseData(void);
 void showParsedData(void);
 void PIDupdate(float* target, int index);
+void SerialPrintData(int type);
+void setPwmFrequency(int pin, int divisor);
 
 void setup() {
   //-----------Set initial conditions----------------
@@ -201,6 +207,11 @@ void setup() {
   //Encoder3 Ch.B rising pulse from encodenren activated ai1(). AttachInterrupt 5 is DigitalPin nr 21.
   attachInterrupt(digitalPinToInterrupt(ENC3_B), ai5, RISING);
 
+  //------------------------------Set system PSM frequency-----------------------------------
+  // setPwmFrequency(4,1);
+  // setPwmFrequency(5,1);
+  // setPwmFrequency(6,1);
+
   //-----------------------------------------------------------------------------------------
   //---------------------------------System Referencen---------------------------------------
   //-----------------------------------------------------------------------------------------
@@ -249,13 +260,13 @@ void setup() {
 
       //---------------------Phase check-------------------------
       if (p_counter1 == 0) {
-        speed1 = 30;
+        speed1 = 10;
         pos1 = 20;
       } else if (p_counter1 == 1) {
-        speed1 = 30;
+        speed1 = 10;
         pos1 = 10;
       } else {
-        speed1 = 15;
+        speed1 = 5;
         pos1 = 5;
       }
 
@@ -320,7 +331,6 @@ void setup() {
       }
     }
 
-
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor2---------------------------------------
     //-----------------------------------------------------------------------------------------
@@ -353,13 +363,13 @@ void setup() {
 
       //---------------------Phase check-------------------------
       if (p_counter2 == 0) {
-        speed2 = 30;
+        speed2 = 10;
         pos2 = 20;
       } else if (p_counter2 == 1) {
-        speed2 = 30;
+        speed2 = 10;
         pos2 = 10;
       } else {
-        speed2 = 15;
+        speed2 = 5;
         pos2 = 5;
       }
 
@@ -389,7 +399,6 @@ void setup() {
           if (Ax2toAngle(counter2) >= pos2) {
             motor2.setSpeed(0);
             state = home;
-            delay(1000);
           }
           break;
 
@@ -454,13 +463,13 @@ void setup() {
 
       //---------------------Phase check-------------------------
       if (p_counter3 == 0) {
-        speed3 = 30;
+        speed3 = 40;
         pos3 = 20;
       } else if (p_counter3 == 1) {
-        speed3 = 30;
+        speed3 = 40;
         pos3 = 10;
       } else {
-        speed3 = 15;
+        speed3 = 35;
         pos3 = 5;
       }
 
@@ -530,16 +539,61 @@ void setup() {
     // Wait for comfirmation
     while (Serial.available() == 0) {}
     // Define encoder variables
-    counter1 = Ax1toCounts(-40.00);
-    counter2 = Ax2toCounts(35.00);
+    counter1 = Ax1toCounts(-25.00);
+    counter2 = Ax2toCounts(-35.00);
     counter3 = Ax3toCounts(0.00);
+    Serial.println("Homed");
+  }
+
+  // -------------------------------------Home DC motors-------------------------------------
+  target_pos1 = 0, target_pos2 = 0, target_pos3 = 80;
+  // unsigned long startTime = millis();
+  // while (true) {  //(millis() - startTime) < 5000
+  //   for (int i = 0; i < 3; i++) {
+  //     PIDupdate(target_pos[i], i);
+  //   }
+  //   //SerialPrintData(4);    
+  // }
+
+  // -------------------------------------Home Servos----------------------------------------
+  for (int i = 0; i < 4; i++) {
+    servos[i].write(servo_off[i]);
+    servo_val[i] = servo_off[i];
+  }
+
+  //while (true) {
+    //SerialPrintData(2);
+  //};
+  while(Serial.available()>0){
+    Serial.flush();
   }
 }
+
 
 //-----------------------------------------------------------------------------------------
 //------------------------------------------MAIN-------------------------------------------
 //-----------------------------------------------------------------------------------------
 void loop() {
+  // Check for collision
+  if (digitalRead(LS1_NC) == HIGH && digitalRead(LS1_NO) == LOW) {
+    motor[0].setSpeed(0);
+    motor[1].setSpeed(0);
+    motor[2].setSpeed(0);
+    while (true) {};
+  }
+  if (digitalRead(LS2_NC) == HIGH && digitalRead(LS2_NO) == LOW) {
+    motor[0].setSpeed(0);
+    motor[1].setSpeed(0);
+    motor[2].setSpeed(0);
+    while (true) {};
+  }
+  if (digitalRead(LS3_NC) == HIGH && digitalRead(LS3_NO) == LOW) {
+    motor[0].setSpeed(0);
+    motor[1].setSpeed(0);
+    motor[2].setSpeed(0);
+    while (true) {};
+  }
+
   // Extract data from string and update target position
   recvWithStartEndMarkers();
   if (newData == true) {
@@ -552,9 +606,9 @@ void loop() {
   }
 
   // Limit target values
-  target_pos1 = constrain(target_pos1, -25, 25);
-  target_pos2 = constrain(target_pos2, -25, 25);
-  target_pos3 = constrain(target_pos3, -25, 25);
+  target_pos1 = constrain(target_pos1, -20, 20);
+  target_pos2 = constrain(target_pos2, -20, 20);
+  target_pos3 = constrain(target_pos3, 0, 140);
   // target_pos4 = constrain(target_pos4, -25, 25);
   // target_pos5 = constrain(target_pos5, -25, 25);
   // target_pos6 = constrain(target_pos6, -25, 25);
@@ -566,13 +620,14 @@ void loop() {
   }
 
   // Update servo motors
-  for(int i = 0; i<4; i++){
+  for (int i = 0; i < 4; i++) {
     int index = i + 2;
     int val = target_pos[index];
     servos[i].write(val);
   }
 
-  // Send current data back to PC
+  // Debugging
+  //SerialPrintData(2);
 }
 
 
@@ -655,9 +710,11 @@ float Ax2toAngle(int count) {
 
 float Ax3toAngle(int count) {
   float q;
-  float trans = 0.637;
-  float D = 30.00;
-  q = (float)count * PI * D * res_avago / trans;
+  //float trans = 0.637;
+  float D = 19.10;
+  float pi = 3.1416;
+  float ref = 360;
+  q = (-1) * pi * D * (float)count * res_avago / ref;
   return q;
 }
 
@@ -677,9 +734,10 @@ int Ax2toCounts(float angle) {
 
 int Ax3toCounts(float pos) {
   int q;
-  float trans = 0.637;
-  float D = 30.00;
-  q = int((pos * trans) / (PI * D * res_avago));
+  //float trans = 0.637;
+  float D = 19.10;
+  float ref = 360;
+  q = int((pos * ref) / (PI * D * res_avago * (-1)));
   return q;
 }
 

@@ -7,11 +7,11 @@ void PIDupdate(float* target, int index) {
   switch (index) {
     case 0:
       current = Ax1toAngle(counter1);
-      kp = 1, ki = 0, kd = 0;
+      kp = 15, ki = 0, kd = 0;
       break;
     case 1:
       current = Ax2toAngle(counter2);
-      kp = 1, ki = 0, kd = 0;
+      kp = 15, ki = 0, kd = 0;
       break;
     case 2:
       current = Ax3toAngle(counter3);
@@ -24,18 +24,21 @@ void PIDupdate(float* target, int index) {
 
   float e = *target - current;
   float u = kp * e;
+  control_values[index] = e;
 
   //Determine direction
-  int dir = 1;
+  int dir = -1;
   if (e < 0) {
-    dir = -1;
+    dir = 1;
   }
 
   //Determine speed
   int speed = (int)fabs(u);
-  if (speed > 255) {
-    speed = 255;
+  if (speed > 200) {
+    speed = 200;
   }
 
   motor[index].setSpeed(dir * speed);
+
+  
 }

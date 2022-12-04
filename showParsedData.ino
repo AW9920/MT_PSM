@@ -1,8 +1,8 @@
 void showParsedData(void) {
-    Serial.print("Message ");
-    Serial.println(messageFromPC);
-    Serial.print("Integer ");
-    Serial.println(integerFromPC);
-    Serial.print("Float ");
-    Serial.println(floatFromPC);
+    Serial.print("\t");
+    Serial.println(target_pos1);
+    Serial.print("\t");
+    Serial.println(target_pos2);
+    Serial.print("\t");
+    Serial.println(target_pos3);
 }

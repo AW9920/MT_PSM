@@ -5,7 +5,7 @@ void recvWithStartEndMarkers(void) {
   char endMarker = '>';
   char rc;
 
-  while (Serial.available() > 0 && newData == false) {
+  if (Serial.available() > 0 && newData == false) {
     rc = Serial.read();
 
     if (recvInProgress == true) {
