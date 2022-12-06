@@ -11,6 +11,9 @@
 #include <math.h>
 #include "CytronMotorDriver.h"
 #include <Servo.h>
+#include <SPI.h>
+#include <SD.h>
+#include <util/atomic.h>
 
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -23,6 +26,8 @@
 
 #define ENC1_A 2
 #define ENC1_B 3
+
+#define CS_SD 15
 
 #define ENC2_A 18
 #define ENC2_B 19
@@ -50,11 +55,28 @@
 #define LS3_NC 52
 #define LS3_NO 53
 
+// #define MISO 50
+// #define MOSI 51
+// #define SCK  52
+// #define SS   53
+
+
+
 //#define PI 3.1415926535897932384626433832795
 
 //=======================================================
 //======             GLOBAL VARIABLES             =======
 //=======================================================
+
+// Timer variables for recording
+unsigned long stepResponsetimer;
+unsigned long rec_start_time;
+unsigned long rec_time = 5000;
+bool rec_flag = false;
+bool startRec = false;
+
+// Define SD card object
+File dataFile = SD.open("datalog.txt", FILE_WRITE);
 
 //State of Development
 String refDevState = "auto";  //Uncomment if auto reference works
@@ -79,7 +101,6 @@ int servo_val[4] = { servo_val1, servo_val2, servo_val3, servo_val4 };
 int servo_off1 = 99, servo_off2 = 89, servo_off3 = 92, servo_off4 = 115;
 int servo_off[4] = { servo_off1, servo_off2, servo_off3, servo_off4 };
 
-
 //Encoder constant parameters
 const float res_avago = 0.36;
 
@@ -87,6 +108,18 @@ const float res_avago = 0.36;
 volatile long time1, temp1, counter1 = 0;
 volatile long time2, temp2, counter2 = 0;
 volatile long time3, temp3, counter3 = 0;
+//Timing
+unsigned long prevT = 0;
+unsigned long currT;
+double dt;
+
+//Velocity computation
+// float vel1, vel2, vel3;
+// float vel[3] = { vel1, vel2, vel3 };
+// long currCount1 = 0, currCount2 = 0, currCount3 = 0;
+// long currCount[3] = { currCount1, currCount2, currCount3 };
+// long preCount1 = 0, preCount2 = 0, preCount3 = 0;
+// long preCount[3] = { preCount1, preCount2, preCount3 };
 
 //State machine variables
 int state;
@@ -113,6 +146,9 @@ const float trans2 = 13.33;
 
 //Joint values
 float q1, q2, q3, q4, q5, q6, q7;
+float q[3] = { q1, q2, q3 };
+//Uncommend when working with all joints
+//float q[7] = { q1, q2, q3, q4, q5, q6, q7 };
 
 //Maxon Motor variables
 int speed1, speed2, speed3;
@@ -120,6 +156,15 @@ int dir1, dir2, dir3;
 
 //PID controller variables
 float kp, ki, kd;
+
+float integral1, integral2, integral3;
+float integral[3] = { integral1, integral2, integral3 };
+
+float prev_e1, prev_e2, prev_e3;
+float prev_e[3] = { prev_e1, prev_e2, prev_e3 };
+float rate_e1, rate_e2, rate_e3;
+float rate_e[3] = { rate_e1, rate_e2, rate_e3 };
+
 float target_pos1, target_pos2, target_pos3;
 float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
 float control_val1, control_val2, control_val3;
@@ -146,11 +191,18 @@ boolean newData = false;
 void recvWithStartEndMarkers(void);
 void parseData(void);
 void showParsedData(void);
-void PIDupdate(float* target, int index);
+void PIDupdate(float* target, int index, String mode);
 void SerialPrintData(int type);
 void setPwmFrequency(int pin, int divisor);
+void InitSDcard(void);
+void SaveData2SD(String data);
 
 void setup() {
+  //------------------------------Set system PSM frequency-----------------------------------
+  // setPwmFrequency(4,1);
+  // setPwmFrequency(5,1);
+  // setPwmFrequency(6,1);
+
   //-----------Set initial conditions----------------
   motor1.setSpeed(0);
   motor2.setSpeed(0);
@@ -206,11 +258,6 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENC3_A), ai4, RISING);
   //Encoder3 Ch.B rising pulse from encodenren activated ai1(). AttachInterrupt 5 is DigitalPin nr 21.
   attachInterrupt(digitalPinToInterrupt(ENC3_B), ai5, RISING);
-
-  //------------------------------Set system PSM frequency-----------------------------------
-  // setPwmFrequency(4,1);
-  // setPwmFrequency(5,1);
-  // setPwmFrequency(6,1);
 
   //-----------------------------------------------------------------------------------------
   //---------------------------------System Referencen---------------------------------------
@@ -339,6 +386,10 @@ void setup() {
     while (!ref2) {
       pinstatusNC = digitalRead(LS2_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS2_NO);  //If HIGH THEN button is not pushed
+      Serial.print("Limit switch 2:\t");
+      Serial.print(digitalRead(LS1_NC));
+      Serial.print('\t');
+      Serial.println(digitalRead(LS1_NO));
 
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
@@ -358,7 +409,9 @@ void setup() {
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor2.setSpeed(0);
         Serial.print("Limit switch 2 is broken! Emergency stop!");
-        while (1) {};
+        Serial.print(pinstatusNC);
+        Serial.println(pinstatusNO);
+        //while (1) {};
       }
 
       //---------------------Phase check-------------------------
@@ -552,7 +605,7 @@ void setup() {
   //   for (int i = 0; i < 3; i++) {
   //     PIDupdate(target_pos[i], i);
   //   }
-  //   //SerialPrintData(4);    
+  //   //SerialPrintData(4);
   // }
 
   // -------------------------------------Home Servos----------------------------------------
@@ -562,37 +615,63 @@ void setup() {
   }
 
   //while (true) {
-    //SerialPrintData(2);
+  //SerialPrintData(2);
   //};
-  while(Serial.available()>0){
+  while (Serial.available() > 0) {
     Serial.flush();
   }
-}
 
+  stepResponsetimer = millis();
+}
 
 //-----------------------------------------------------------------------------------------
 //------------------------------------------MAIN-------------------------------------------
 //-----------------------------------------------------------------------------------------
 void loop() {
+  //Create empty data string
+  String dataString = "";
+  int val;
+  int index;
+
+  //-------------------Compute velocity----------------
+
+
+
+  //-------------Stepresponse eval (Evaluation)-------------
+  if ((millis() - stepResponsetimer) >= 5000 && (millis() - stepResponsetimer) < 10000) {
+    startRec = true;
+    *target_pos[0] = 0, *target_pos[1] = 10, *target_pos[2] = 50;
+    //Serial.println('Stage 1');
+  } else if ((millis() - stepResponsetimer) >= 10000 && (millis() - stepResponsetimer) < 15000) {
+    *target_pos[0] = 10, *target_pos[1] = 0, *target_pos[2] = 0;
+    //Serial.println('Stage 2');
+  } else if ((millis() - stepResponsetimer) >= 15000 && (millis() - stepResponsetimer) < 20000) {
+    *target_pos[0] = -10, *target_pos[1] = -5, *target_pos[2] = 40;
+    //Serial.println('Stage 3');
+  } else {
+    *target_pos[0] = 0, *target_pos[1] = 0, *target_pos[2] = 0;
+    //Serial.println('Stage 4');
+  }
+
   // Check for collision
-  if (digitalRead(LS1_NC) == HIGH && digitalRead(LS1_NO) == LOW) {
-    motor[0].setSpeed(0);
-    motor[1].setSpeed(0);
-    motor[2].setSpeed(0);
-    while (true) {};
-  }
-  if (digitalRead(LS2_NC) == HIGH && digitalRead(LS2_NO) == LOW) {
-    motor[0].setSpeed(0);
-    motor[1].setSpeed(0);
-    motor[2].setSpeed(0);
-    while (true) {};
-  }
-  if (digitalRead(LS3_NC) == HIGH && digitalRead(LS3_NO) == LOW) {
-    motor[0].setSpeed(0);
-    motor[1].setSpeed(0);
-    motor[2].setSpeed(0);
-    while (true) {};
-  }
+  // if (digitalRead(LS1_NC) == HIGH && digitalRead(LS1_NO) == LOW) {
+  //   motor[0].setSpeed(0);
+  //   motor[1].setSpeed(0);
+  //   motor[2].setSpeed(0);
+  //   while (true) {};
+  // }
+  // if (digitalRead(LS2_NC) == HIGH && digitalRead(LS2_NO) == LOW) {
+  //   motor[0].setSpeed(0);
+  //   motor[1].setSpeed(0);
+  //   motor[2].setSpeed(0);
+  //   while (true) {};
+  // }
+  // if (digitalRead(LS3_NC) == HIGH && digitalRead(LS3_NO) == LOW) {
+  //   motor[0].setSpeed(0);
+  //   motor[1].setSpeed(0);
+  //   motor[2].setSpeed(0);
+  //   while (true) {};
+  // }
 
   // Extract data from string and update target position
   recvWithStartEndMarkers();
@@ -603,6 +682,7 @@ void loop() {
     parseData();
     showParsedData();
     newData = false;
+    startRec = true;
   }
 
   // Limit target values
@@ -616,18 +696,31 @@ void loop() {
 
   // Update control values of each motor; (Joint Space)
   for (int i = 0; i < 3; i++) {
-    PIDupdate(target_pos[i], i);
+    PIDupdate(target_pos[i], i, "PID");
   }
 
   // Update servo motors
   for (int i = 0; i < 4; i++) {
-    int index = i + 2;
-    int val = target_pos[index];
+    index = i + 2;
+    val = target_pos[index];
     servos[i].write(val);
   }
 
+  //Store Data to SD card
+  if ((millis() - rec_start_time) <= rec_time && rec_flag) {
+    //Save current and target value to SD card
+    SaveData2SD(dataString);
+  } else if ((millis() - rec_start_time) >= rec_time && rec_flag) {
+    dataFile.close();
+    rec_flag = false;
+    rec_start_time = millis();
+  } else {
+    rec_start_time = millis();
+  }
+
+
   // Debugging
-  //SerialPrintData(2);
+  SerialPrintData(6);
 }
 
 
@@ -749,3 +842,20 @@ void readJointValues() {
 
   //Fill array
 }
+
+void getDT(void) {
+  currT = micros();
+  dt = (double)(currT - prevT) / 1.0e6;
+  prevT = currT;
+}
+
+// ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+//   currCount[0] = counter1;
+//   currCount[1] = counter2;
+//   currCount[2] = counter3;
+// }
+
+// // for (int i = 0; i < sizeof(vel) / sizeof(vel[0]); i++) {
+// //   vel[i] = (currCount[i] - preCount[i])/deltaT;
+// //   preCount[i] = currCount[i];
+// // }
