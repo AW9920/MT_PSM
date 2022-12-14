@@ -7,13 +7,13 @@ void SerialPrintData(int type) {
   //5 ->  "Record step response of PSM"
 
   float ax1_angle, ax2_angle, ax3_angle;
-
   switch (type) {
     case 0:
       // samplingTime = millis() - currentTime;
       // //Output sampling Time
       // Serial.print("Sampling Time:");
       // Serial.println(samplingTime);
+      Serial.println(dt, 6);
       break;
 
     case 1:
@@ -61,27 +61,34 @@ void SerialPrintData(int type) {
       break;
 
     case 5:
-      ax1_angle = Ax1toAngle(counter1);
-      ax2_angle = Ax2toAngle(counter2);
-      ax3_angle = Ax3toAngle(counter3);
-      if (true) {
-        Serial.print(*target_pos[0]);
+      ax1_angle = Ax1toAngle(Enc1.read());
+      ax2_angle = Ax2toAngle(Enc2.read());
+      ax3_angle = Ax3toAngle(Enc3.read());
+      if (startRec) {
+        Serial.print(*target_pos[0], 4);
         Serial.print('\t');
-        Serial.print(*target_pos[1]);
+        Serial.print(*target_pos[1], 4);
         Serial.print('\t');
-        Serial.print(*target_pos[2]);
+        Serial.print(*target_pos[2], 4);
         Serial.print('\t');
-        Serial.print(ax1_angle);
+        Serial.print(ax1_angle, 4);
         Serial.print('\t');
-        Serial.print(ax2_angle);
+        Serial.print(ax2_angle, 4);
         Serial.print('\t');
-        Serial.println(ax3_angle);
+        Serial.println(ax3_angle, 4);
       }
       break;
 
     case 6:
-      getDT();
-      Serial.println(dt,6);
+      Serial.println(dt, 6);
+      break;
+
+    case 7:
+      Serial.print(e_yn1[0], 4);
+      Serial.print('\t');
+      Serial.print(e_yn1[1], 4);
+      Serial.print('\t');
+      Serial.println(e_yn1[2], 4);
       break;
   }
 }

@@ -14,7 +14,8 @@
 #include <SPI.h>
 #include <SD.h>
 #include <util/atomic.h>
-
+#include <Encoder.h>
+#define ENCODER_OPTIMIZE_INTERRUPTS
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 #include "Wire.h"
@@ -60,68 +61,60 @@
 // #define SCK  52
 // #define SS   53
 
-
-
-//#define PI 3.1415926535897932384626433832795
+#define PI 3.1415926535897932384626433832795
 
 //=======================================================
 //======             GLOBAL VARIABLES             =======
 //=======================================================
 
-// Timer variables for recording
+//----------Timer variables for recording
 unsigned long stepResponsetimer;
 unsigned long rec_start_time;
 unsigned long rec_time = 5000;
 bool rec_flag = false;
 bool startRec = false;
 
-// Define SD card object
+//----------Define SD card object
 File dataFile = SD.open("datalog.txt", FILE_WRITE);
 
-//State of Development
+//----------State of Development
 String refDevState = "auto";  //Uncomment if auto reference works
 //String refDevState = "manual";
 
-// Configure the motor driver.
+//----------Configure the motor driver.
 CytronMD motor1(PWM_DIR, DC1_PWM, DC1_DIR);  // PWM 1 = Pin 4, DIR 1 = Pin 7.
 CytronMD motor2(PWM_DIR, DC2_PWM, DC2_DIR);  // PWM 2 = Pin 5, DIR 2 = Pin 8.
 CytronMD motor3(PWM_DIR, DC3_PWM, DC3_DIR);  // PWM 2 = Pin 6, DIR 2 = Pin 9.
 CytronMD motor[3] = { motor1, motor2, motor3 };
 
-//Configure Servo objects
+//----------Encoder objects
+Encoder Enc1(3, 2);
+Encoder Enc2(19, 18);
+Encoder Enc3(21, 20);
+
+//----------Configure Servo objects
 Servo servo_roll;
 Servo servo_pitch;
 Servo servo_yaw1;
 Servo servo_yaw2;
 Servo servos[4] = { servo_roll, servo_pitch, servo_yaw1, servo_yaw2 };
 
-//Servo variables
+//----------Servo variables
 int servo_val1, servo_val2, servo_val3, servo_val4;
 int servo_val[4] = { servo_val1, servo_val2, servo_val3, servo_val4 };
 int servo_off1 = 99, servo_off2 = 89, servo_off3 = 92, servo_off4 = 115;
 int servo_off[4] = { servo_off1, servo_off2, servo_off3, servo_off4 };
 
-//Encoder constant parameters
-const float res_avago = 0.36;
-
-// Optical encoder variables
-volatile long time1, temp1, counter1 = 0;
-volatile long time2, temp2, counter2 = 0;
-volatile long time3, temp3, counter3 = 0;
-//Timing
-unsigned long prevT = 0;
-unsigned long currT;
+//----------Optical encoder variables
+long raw_pos1, raw_pos2, raw_pos3;
+long pos[3] = { raw_pos1, raw_pos2, raw_pos3 };
+const float res_avago = 0.18;
+//----------Sampling Time variables
+double prevT = 0;
+double currT;
 double dt;
 
-//Velocity computation
-// float vel1, vel2, vel3;
-// float vel[3] = { vel1, vel2, vel3 };
-// long currCount1 = 0, currCount2 = 0, currCount3 = 0;
-// long currCount[3] = { currCount1, currCount2, currCount3 };
-// long preCount1 = 0, preCount2 = 0, preCount3 = 0;
-// long preCount[3] = { preCount1, preCount2, preCount3 };
-
-//State machine variables
+//----------State machine variables
 int state;
 int home = 0;
 int retrieve = 1;
@@ -134,33 +127,33 @@ bool ref_drive1, ref_drive2, ref_drive3;
 bool refpos1, refpos2, refpos3;
 
 int p_counter1 = 0, p_counter2 = 0, p_counter3 = 0;
-int ref_counter1 = 0, ref_counter2 = 0, ref_counter3 = 0;
+long ref_counter1 = 0, ref_counter2 = 0, ref_counter3 = 0;
 const int threshold = 10;
 
 float pos1, pos2, pos3;  //In angular position of axis
 float ref_offset1 = -25, ref_offset2 = -35, ref_offset3 = 0;
 
-//Transmission ration
+//----------Transmission ration
 const float trans1 = 20.00;
 const float trans2 = 13.33;
 
-//Joint values
+//----------Joint values
 float q1, q2, q3, q4, q5, q6, q7;
 float q[3] = { q1, q2, q3 };
 //Uncommend when working with all joints
 //float q[7] = { q1, q2, q3, q4, q5, q6, q7 };
 
-//Maxon Motor variables
+//----------Maxon Motor variables
 int speed1, speed2, speed3;
 int dir1, dir2, dir3;
 
-//PID controller variables
+//----------PID controller variables
 float kp, ki, kd;
 
 float integral1, integral2, integral3;
 float integral[3] = { integral1, integral2, integral3 };
 
-float prev_e1, prev_e2, prev_e3;
+float prev_e1=0, prev_e2=0, prev_e3=0;
 float prev_e[3] = { prev_e1, prev_e2, prev_e3 };
 float rate_e1, rate_e2, rate_e3;
 float rate_e[3] = { rate_e1, rate_e2, rate_e3 };
@@ -169,21 +162,35 @@ float target_pos1, target_pos2, target_pos3;
 float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
 float control_val1, control_val2, control_val3;
 float control_values[3] = { control_val1, control_val2, control_val3 };
+float sat_control_val1, sat_control_val2, sat_control_val3;
+float sat_control_values[3] = { sat_control_val1, sat_control_val2, sat_control_val3 };
+
+bool clamp_I = false;
 //Uncomment when working for all joints
 //float target_pos1, target_pos2, target_pos3, target_pos4, target_pos5, target_pos6, target_pos7;
 //float* target_pos[7] = { &target_pos1, &target_pos2, &target_pos3, &target_pos4, &target_pos5, &target_pos6, &target_pos7 };
 
-//Receive Data
+//----------Receive Data
 const byte numChars = 32;
 char receivedChars[numChars];
 char tempChars[numChars];  // temporary array for use when parsing
-
-// variables to hold the parsed data
+//variables to temp hold the parsed data
 char messageFromPC[numChars] = { 0 };
 int integerFromPC = 0;
 float floatFromPC = 0.0;
-
 boolean newData = false;
+
+//----------Lp filter variables
+double dt_xn1;
+double dt_yn1;
+bool first = true;
+
+float pre_filter_e_1, pre_filter_e_2, pre_filter_e_3;
+float e_yn1[3] = { pre_filter_e_1, pre_filter_e_2, pre_filter_e_3 };
+
+//----------Position sampler
+bool first_sample = true;
+unsigned long sampler_start_time;
 
 //=======================================================
 //======          Function Declaration            =======
@@ -196,13 +203,14 @@ void SerialPrintData(int type);
 void setPwmFrequency(int pin, int divisor);
 void InitSDcard(void);
 void SaveData2SD(String data);
+void CheckCol(void);
+void PosSampler(String mode);
 
 void setup() {
   //------------------------------Set system PSM frequency-----------------------------------
   // setPwmFrequency(4,1);
   // setPwmFrequency(5,1);
   // setPwmFrequency(6,1);
-
   //-----------Set initial conditions----------------
   motor1.setSpeed(0);
   motor2.setSpeed(0);
@@ -245,29 +253,17 @@ void setup() {
   pinMode(DC2_DIR, OUTPUT);
   pinMode(DC3_DIR, OUTPUT);
 
-  //----------------  //Setting up interrupt---------------------------
-  //Encoder1 Ch.A rising pulse from encodenren activated ai0(). AttachInterrupt 0 is DigitalPin nr 2.
-  attachInterrupt(digitalPinToInterrupt(ENC1_A), ai0, RISING);
-  //Encoder1 Ch.B rising pulse from encodenren activated ai1(). AttachInterrupt 1 is DigitalPin nr 3.
-  attachInterrupt(digitalPinToInterrupt(ENC1_B), ai1, RISING);
-  //Encoder2 Ch.A rising pulse from encodenren activated ai1(). AttachInterrupt 2 is DigitalPin nr 18.
-  attachInterrupt(digitalPinToInterrupt(ENC2_A), ai2, RISING);
-  //Encoder2 Ch.B rising pulse from encodenren activated ai1(). AttachInterrupt 3 is DigitalPin nr 19.
-  attachInterrupt(digitalPinToInterrupt(ENC2_B), ai3, RISING);
-  //Encoder3 Ch.A rising pulse from encodenren activated ai1(). AttachInterrupt 4 is DigitalPin nr 20.
-  attachInterrupt(digitalPinToInterrupt(ENC3_A), ai4, RISING);
-  //Encoder3 Ch.B rising pulse from encodenren activated ai1(). AttachInterrupt 5 is DigitalPin nr 21.
-  attachInterrupt(digitalPinToInterrupt(ENC3_B), ai5, RISING);
-
   //-----------------------------------------------------------------------------------------
   //---------------------------------System Referencen---------------------------------------
   //-----------------------------------------------------------------------------------------
-
+  Enc1.write(0);
+  Enc2.write(0);
+  Enc3.write(0);
   if (refDevState == "auto") {  //Reference drive; Offset variables are determined automatically
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor1---------------------------------------
     //-----------------------------------------------------------------------------------------
-    Serial.println("Start Homing: Axis 1!");
+    //Serial.println("Start Homing: Axis 1!");
     //Check pin status
     int pinstatusNC;
     int pinstatusNO;
@@ -285,7 +281,7 @@ void setup() {
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
         motor1.setSpeed(0);
-        Serial.println("Reached Limit Switch");
+        //Serial.println("Reached Limit Switch");
         state = reference;
         refpos1 = true;
         ref_drive1 = true;  //Indicates current reference drive
@@ -300,7 +296,7 @@ void setup() {
 
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor1.setSpeed(0);
-        Serial.print("Limit switch 1 is broken! Emergency stop!");
+        //Serial.print("Limit switch 1 is broken! Emergency stop!");
         ref_drive1 = false;  //Indicates current reference drive
         while (1) {};
       }
@@ -308,13 +304,13 @@ void setup() {
       //---------------------Phase check-------------------------
       if (p_counter1 == 0) {
         speed1 = 10;
-        pos1 = 20;
+        pos1 = 15;
       } else if (p_counter1 == 1) {
         speed1 = 10;
         pos1 = 10;
       } else {
         speed1 = 5;
-        pos1 = 5;
+        pos1 = -5;
       }
 
       //--------------------State machine-----------------------
@@ -337,10 +333,12 @@ void setup() {
         case 1:  //RETRIEVE
           dir1 = -1;
           motor1.setSpeed(dir1 * speed1);
-          Serial.print("Counter1: ");
-          Serial.println(counter1);
+          //Serial.print("Counter1: ");
+          Serial.print(Ax1toAngle(Enc1.read()));
+          Serial.print('\t');
+          Serial.println(pos1);
           //Check for end position
-          if (Ax1toAngle(counter1) >= pos1) {
+          if (Ax1toAngle(Enc1.read()) >= pos1) {
             motor1.setSpeed(0);
             state = home;
             delay(1000);
@@ -352,17 +350,20 @@ void setup() {
           //Set reference or compare is phase!=0
           if (p_counter1 == 0 && refpos1 == true) {
             ref_counter1 = 0;
-            counter1 = 0;
+            Enc1.write(0);
+            //counter1 = 0;
           } else if (p_counter1 > 0 && refpos1 == true) {
-            int dif = abs(ref_counter1 - counter1);
+            int dif = abs(ref_counter1 - Enc1.read());
             if (dif <= threshold) {
               //Set counter to actual position
-              counter1 = Ax1toCounts(ref_offset1);
+              Enc1.write(Ax1toCounts(ref_offset1));
               ref1 = true;
               ref_drive1 = false;
+              Serial.print("Home! Position:");
+              Serial.println(Enc1.read());
             } else {
-              ref_counter1 = counter1;
-              counter1 = 0;
+              ref_counter1 = Enc1.read();
+              Enc1.write(0);
             }
           }
           //Switch phase
@@ -386,10 +387,11 @@ void setup() {
     while (!ref2) {
       pinstatusNC = digitalRead(LS2_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS2_NO);  //If HIGH THEN button is not pushed
-      Serial.print("Limit switch 2:\t");
-      Serial.print(digitalRead(LS1_NC));
-      Serial.print('\t');
-      Serial.println(digitalRead(LS1_NO));
+      //Serial.print("Limit switch 2:\t");
+      //Serial.print(digitalRead(LS1_NC));
+      //Serial.print('\t');
+      //Serial.println(digitalRead(LS1_NO));
+      Serial.println("test");
 
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
@@ -409,21 +411,21 @@ void setup() {
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor2.setSpeed(0);
         Serial.print("Limit switch 2 is broken! Emergency stop!");
-        Serial.print(pinstatusNC);
-        Serial.println(pinstatusNO);
+        //Serial.print(pinstatusNC);
+        //Serial.println(pinstatusNO);
         //while (1) {};
       }
 
       //---------------------Phase check-------------------------
       if (p_counter2 == 0) {
         speed2 = 10;
-        pos2 = 20;
+        pos2 = -20;
       } else if (p_counter2 == 1) {
         speed2 = 10;
-        pos2 = 10;
+        pos2 = -10;
       } else {
         speed2 = 5;
-        pos2 = 5;
+        pos2 = -5;
       }
 
       //--------------------State machine-----------------------
@@ -446,10 +448,10 @@ void setup() {
         case 1:  //RETRIEVE
           dir2 = -1;
           motor2.setSpeed(dir2 * speed2);
-          Serial.print("Counter2: ");
-          Serial.println(counter2);
+          //Serial.print("Counter2: ");
+          //Serial.println(counter2);
           //Check for end position
-          if (Ax2toAngle(counter2) >= pos2) {
+          if (Ax2toAngle(Enc2.read()) >= pos2) {
             motor2.setSpeed(0);
             state = home;
           }
@@ -460,17 +462,20 @@ void setup() {
           //Set reference or compare is phase!=0
           if (p_counter2 == 0 && refpos2 == true) {
             ref_counter2 = 0;
-            counter2 = 0;
+            Enc2.write(0);
           } else if (p_counter2 > 0 && refpos2 == true) {
-            int dif = abs(ref_counter2 - counter2);
+            int dif = abs(ref_counter2 - Enc2.read());
             if (dif <= threshold) {
               //Set counter to actual position
-              counter2 = Ax2toCounts(ref_offset2);
+              Enc2.write(Ax2toCounts(ref_offset2));
               ref2 = true;
               ref_drive2 = false;
+              Serial.print("Homed2! Position");
+              Serial.println(Enc2.read());
             } else {
-              ref_counter2 = counter2;
-              counter2 = 0;
+              ref_counter2 = Enc2.read();
+              Enc2.write(0);
+              Serial.println('test');
             }
           }
           //Switch phase
@@ -496,7 +501,7 @@ void setup() {
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
         motor3.setSpeed(0);
-        Serial.println("Reached Limit Switch");
+        //Serial.println("Reached Limit Switch");
         state = reference;
         refpos3 = true;
         ref_drive3 = true;  //Indicates current reference drive
@@ -510,19 +515,19 @@ void setup() {
 
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor3.setSpeed(0);
-        Serial.print("Limit switch 3 is broken! Emergency stop!");
+        //Serial.print("Limit switch 3 is broken! Emergency stop!");
         while (1) {};
       }
 
       //---------------------Phase check-------------------------
       if (p_counter3 == 0) {
-        speed3 = 40;
+        speed3 = 80;
         pos3 = 20;
       } else if (p_counter3 == 1) {
-        speed3 = 40;
+        speed3 = 80;
         pos3 = 10;
       } else {
-        speed3 = 35;
+        speed3 = 80;
         pos3 = 5;
       }
 
@@ -546,10 +551,10 @@ void setup() {
         case 1:  //RETRIEVE
           dir3 = -1;
           motor3.setSpeed(dir3 * speed3);
-          Serial.print("Counter3: ");
-          Serial.println(counter3);
+          //Serial.print("Counter3: ");
+          Serial.println(Enc3.read());
           //Check for end position
-          if (Ax3toAngle(counter3) >= pos3) {
+          if (Ax3toAngle(Enc3.read()) >= pos3) {
             motor3.setSpeed(0);
             state = home;
             delay(1000);
@@ -561,17 +566,17 @@ void setup() {
           //Set reference or compare is phase!=0
           if (p_counter3 == 0 && refpos3 == true) {
             ref_counter3 = 0;
-            counter3 = 0;
+            Enc3.write(0);
           } else if (p_counter3 > 0 && refpos3 == true) {
-            int dif = abs(ref_counter3 - counter3);
+            int dif = abs(ref_counter3 - Enc3.read());
             if (dif <= threshold) {
               //Set counter to actual position
-              counter3 = Ax3toCounts(ref_offset3);
+              Enc3.write(Ax3toCounts(ref_offset3));
               ref3 = true;
               ref_drive3 = false;
             } else {
-              ref_counter3 = counter3;
-              counter3 = 0;
+              ref_counter3 = Enc3.read();
+              Enc3.write(0);
             }
           }
           //Switch phase
@@ -592,35 +597,20 @@ void setup() {
     // Wait for comfirmation
     while (Serial.available() == 0) {}
     // Define encoder variables
-    counter1 = Ax1toCounts(-25.00);
-    counter2 = Ax2toCounts(-35.00);
-    counter3 = Ax3toCounts(0.00);
-    Serial.println("Homed");
+    Enc1.write(Ax1toCounts(-25.00)); 
+    Enc2.write(Ax2toCounts(-35.00)); 
+    Enc3.write(Ax3toCounts(0.00));
   }
 
   // -------------------------------------Home DC motors-------------------------------------
-  target_pos1 = 0, target_pos2 = 0, target_pos3 = 80;
-  // unsigned long startTime = millis();
-  // while (true) {  //(millis() - startTime) < 5000
-  //   for (int i = 0; i < 3; i++) {
-  //     PIDupdate(target_pos[i], i);
-  //   }
-  //   //SerialPrintData(4);
-  // }
+  *target_pos[0] = 0, *target_pos[1] = 0, *target_pos[2] = 80;
 
   // -------------------------------------Home Servos----------------------------------------
   for (int i = 0; i < 4; i++) {
     servos[i].write(servo_off[i]);
     servo_val[i] = servo_off[i];
   }
-
-  //while (true) {
-  //SerialPrintData(2);
-  //};
-  while (Serial.available() > 0) {
-    Serial.flush();
-  }
-
+  // Start timer
   stepResponsetimer = millis();
 }
 
@@ -633,175 +623,91 @@ void loop() {
   int val;
   int index;
 
-  //-------------------Compute velocity----------------
-
-
+  // Update control values of each motor; (Joint Space)
+  getDT();
+  LPFilter_DT();
+  dt = 0.0016;
 
   //-------------Stepresponse eval (Evaluation)-------------
-  if ((millis() - stepResponsetimer) >= 5000 && (millis() - stepResponsetimer) < 10000) {
-    startRec = true;
-    *target_pos[0] = 0, *target_pos[1] = 10, *target_pos[2] = 50;
-    //Serial.println('Stage 1');
-  } else if ((millis() - stepResponsetimer) >= 10000 && (millis() - stepResponsetimer) < 15000) {
-    *target_pos[0] = 10, *target_pos[1] = 0, *target_pos[2] = 0;
-    //Serial.println('Stage 2');
-  } else if ((millis() - stepResponsetimer) >= 15000 && (millis() - stepResponsetimer) < 20000) {
-    *target_pos[0] = -10, *target_pos[1] = -5, *target_pos[2] = 40;
-    //Serial.println('Stage 3');
-  } else {
-    *target_pos[0] = 0, *target_pos[1] = 0, *target_pos[2] = 0;
-    //Serial.println('Stage 4');
-  }
+  PosSampler("Sine");
 
   // Check for collision
-  // if (digitalRead(LS1_NC) == HIGH && digitalRead(LS1_NO) == LOW) {
-  //   motor[0].setSpeed(0);
-  //   motor[1].setSpeed(0);
-  //   motor[2].setSpeed(0);
-  //   while (true) {};
-  // }
-  // if (digitalRead(LS2_NC) == HIGH && digitalRead(LS2_NO) == LOW) {
-  //   motor[0].setSpeed(0);
-  //   motor[1].setSpeed(0);
-  //   motor[2].setSpeed(0);
-  //   while (true) {};
-  // }
-  // if (digitalRead(LS3_NC) == HIGH && digitalRead(LS3_NO) == LOW) {
-  //   motor[0].setSpeed(0);
-  //   motor[1].setSpeed(0);
-  //   motor[2].setSpeed(0);
-  //   while (true) {};
-  // }
+  //CheckCol();
 
   // Extract data from string and update target position
-  recvWithStartEndMarkers();
-  if (newData == true) {
-    strcpy(tempChars, receivedChars);
-    // this temporary copy is necessary to protect the original data
-    //   because strtok() used in parseData() replaces the commas with \0
-    parseData();
-    showParsedData();
-    newData = false;
-    startRec = true;
-  }
+  // recvWithStartEndMarkers();
+  // if (newData == true) {
+  //   strcpy(tempChars, receivedChars);
+  //   // this temporary copy is necessary to protect the original data
+  //   //   because strtok() used in parseData() replaces the commas with \0
+  //   parseData();
+  //   showParsedData();
+  //   newData = false;
+  //   //startRec = true;
+  // }
 
   // Limit target values
-  target_pos1 = constrain(target_pos1, -20, 20);
-  target_pos2 = constrain(target_pos2, -20, 20);
-  target_pos3 = constrain(target_pos3, 0, 140);
-  // target_pos4 = constrain(target_pos4, -25, 25);
-  // target_pos5 = constrain(target_pos5, -25, 25);
-  // target_pos6 = constrain(target_pos6, -25, 25);
-  // target_pos7 = constrain(target_pos7, -25, 25);
+  target_pos1 = constrain(target_pos1, -15, 15);
+  target_pos2 = constrain(target_pos2, -15, 15);
+  target_pos3 = constrain(target_pos3, 0, 120);
+  // target_pos4 = constrain(target_pos4, -90, 90);
+  // target_pos5 = constrain(target_pos5, -90, 90);
+  // target_pos6 = constrain(target_pos6, -90, 90);
+  // target_pos7 = constrain(target_pos7, -90, 90);
 
-  // Update control values of each motor; (Joint Space)
   for (int i = 0; i < 3; i++) {
     PIDupdate(target_pos[i], i, "PID");
   }
 
   // Update servo motors
   for (int i = 0; i < 4; i++) {
-    index = i + 2;
+    index = i + 3;
     val = target_pos[index];
     servos[i].write(val);
   }
 
   //Store Data to SD card
-  if ((millis() - rec_start_time) <= rec_time && rec_flag) {
-    //Save current and target value to SD card
-    SaveData2SD(dataString);
-  } else if ((millis() - rec_start_time) >= rec_time && rec_flag) {
-    dataFile.close();
-    rec_flag = false;
-    rec_start_time = millis();
-  } else {
-    rec_start_time = millis();
-  }
-
+  // if ((millis() - rec_start_time) <= rec_time && dataFile) {
+  //   //Save current and target value to SD card
+  //   SaveData2SD(dataString);
+  // } else if ((millis() - rec_start_time) >= rec_time && rec_flag) {
+  //   dataFile.close();
+  //   rec_flag = false;
+  //   rec_start_time = millis();
+  // } else {
+  //   rec_start_time = millis();
+  // }
 
   // Debugging
-  SerialPrintData(6);
+  SerialPrintData(5);
 }
 
 
 //-----------------------------------------------------------------------------------------
 //-------------------------------------FUNCTIONS-------------------------------------------
 //-----------------------------------------------------------------------------------------
-void ai0() {
-  // ai0 is activated if DigitalPin ENC1_A is going from LOW to HIGH
-  // Check pin ENC1_B to determine the direction
-  if (digitalRead(ENC1_B) == LOW) {
-    counter1++;
-  } else {
-    counter1--;
-  }
+void getDT(void) {
+  //Only call once in routine
+  currT = micros();
+  dt = (currT - prevT) / 1.0e6;
+  prevT = currT;
 }
 
-void ai1() {
-  // ai1 is activated if DigitalPin ENC1_B is going from LOW to HIGH
-  // Check with pin ENC1_A to determine the direction
-  if (digitalRead(ENC1_A) == LOW) {
-    counter1--;
-  } else {
-    counter1++;
-  }
-}
-
-void ai2() {
-  // ai2 is activated if DigitalPin ENC2_A is going from LOW to HIGH
-  // Check with pin ENC2_B to determine the direction
-  if (digitalRead(ENC2_B) == LOW) {
-    counter2++;
-  } else {
-    counter2--;
-  }
-}
-
-void ai3() {
-  // ai3 is activated if DigitalPin ENC2_B is going from LOW to HIGH
-  // Check with pin ENC2_A to determine the direction
-  if (digitalRead(ENC2_A) == LOW) {
-    counter2--;
-  } else {
-    counter2++;
-  }
-}
-
-void ai4() {
-  // ai4 is activated if DigitalPin ENC3_A is going from LOW to HIGH
-  // Check with pin ENC3_B to determine the direction
-  if (digitalRead(ENC3_B) == LOW) {
-    counter3++;
-  } else {
-    counter3--;
-  }
-}
-
-void ai5() {
-  // ai5 is activated if DigitalPin ENC3_B is going from LOW to HIGH
-  // Check with pin ENC3_A to determine the direction
-  if (digitalRead(ENC3_A) == LOW) {
-    counter3--;
-  } else {
-    counter3++;
-  }
-}
-
-float Ax1toAngle(int count) {
+float Ax1toAngle(long count) {
   float q;
   float trans = 20.000;
   q = (-1) * (float)count * res_avago / trans;
   return q;
 }
 
-float Ax2toAngle(int count) {
+float Ax2toAngle(long count) {
   float q;
   float trans = 13.333;
   q = (-1) * (float)count * res_avago / trans;
   return q;
 }
 
-float Ax3toAngle(int count) {
+float Ax3toAngle(long count) {
   float q;
   //float trans = 0.637;
   float D = 19.10;
@@ -814,14 +720,14 @@ float Ax3toAngle(int count) {
 int Ax1toCounts(float angle) {
   int q;
   float trans = 20.000;
-  q = int((-1) * angle * trans / res_avago);
+  q = int(-1.0 * angle * trans / res_avago);
   return q;
 }
 
 int Ax2toCounts(float angle) {
   int q;
   float trans = 13.333;
-  q = int((-1) * angle * trans / res_avago);
+  q = int(-1.0 * angle * trans / res_avago);
   return q;
 }
 
@@ -830,7 +736,7 @@ int Ax3toCounts(float pos) {
   //float trans = 0.637;
   float D = 19.10;
   float ref = 360;
-  q = int((pos * ref) / (PI * D * res_avago * (-1)));
+  q = int(-1.0 * (pos * ref) / (PI * D * res_avago));
   return q;
 }
 
@@ -843,11 +749,6 @@ void readJointValues() {
   //Fill array
 }
 
-void getDT(void) {
-  currT = micros();
-  dt = (double)(currT - prevT) / 1.0e6;
-  prevT = currT;
-}
 
 // ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
 //   currCount[0] = counter1;
