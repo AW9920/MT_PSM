@@ -16,6 +16,8 @@
 #include <util/atomic.h>
 #include <Encoder.h>
 #define ENCODER_OPTIMIZE_INTERRUPTS
+#include <SPI.h>
+#include <SD.h>
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
 #include "Wire.h"
@@ -49,17 +51,17 @@
 #define SERVO3 12
 #define SERVO4 13
 
-#define LS1_NC 48
-#define LS1_NO 49
-#define LS2_NC 50
-#define LS2_NO 51
-#define LS3_NC 52
-#define LS3_NO 53
+#define LS1_NC 49
+#define LS1_NO 48
+#define LS2_NC 47
+#define LS2_NO 46
+#define LS3_NC 45
+#define LS3_NO 44
 
-// #define MISO 50
-// #define MOSI 51
-// #define SCK  52
-// #define SS   53
+#define MISO 50
+#define MOSI 51
+#define SCK 52
+#define SS 53
 
 #define PI 3.1415926535897932384626433832795
 
@@ -75,7 +77,7 @@ bool rec_flag = false;
 bool startRec = false;
 
 //----------Define SD card object
-File dataFile = SD.open("datalog.txt", FILE_WRITE);
+File dataFile;
 
 //----------State of Development
 String refDevState = "auto";  //Uncomment if auto reference works
@@ -110,9 +112,9 @@ long raw_pos1, raw_pos2, raw_pos3;
 long pos[3] = { raw_pos1, raw_pos2, raw_pos3 };
 const float res_avago = 0.18;
 //----------Sampling Time variables
-double prevT = 0;
-double currT;
-double dt;
+float prevT = 0;
+float currT;
+float dt;
 
 //----------State machine variables
 int state;
@@ -137,6 +139,10 @@ float ref_offset1 = -25, ref_offset2 = -35, ref_offset3 = 0;
 const float trans1 = 20.00;
 const float trans2 = 13.33;
 
+//-----Enc variables
+float min_res1 = 0.01, min_res2 = 0.02, min_res3 = 0.03;
+float min_res[3] = { min_res1, min_res2, min_res3 };
+
 //----------Joint values
 float q1, q2, q3, q4, q5, q6, q7;
 float q[3] = { q1, q2, q3 };
@@ -145,18 +151,23 @@ float q[3] = { q1, q2, q3 };
 
 //----------Maxon Motor variables
 int speed1, speed2, speed3;
+int m_speed[3] = { speed1, speed2, speed3 };
 int dir1, dir2, dir3;
+int dir[3] = { dir1, dir2, dir3 };
 
 //----------PID controller variables
 float kp, ki, kd;
+String c_mode;
 
 float integral1, integral2, integral3;
 float integral[3] = { integral1, integral2, integral3 };
 
-float prev_e1=0, prev_e2=0, prev_e3=0;
+float prev_e1 = 0, prev_e2 = 0, prev_e3 = 0;  //Last Error
 float prev_e[3] = { prev_e1, prev_e2, prev_e3 };
-float rate_e1, rate_e2, rate_e3;
+float rate_e1, rate_e2, rate_e3;  //Current derivative
 float rate_e[3] = { rate_e1, rate_e2, rate_e3 };
+float prev_rate_e1 = 0, prev_rate_e2 = 0, prev_rate_e3 = 0;  //Last derivative
+float prev_rate_e[3] = { prev_rate_e1, prev_rate_e2, prev_rate_e3 };
 
 float target_pos1, target_pos2, target_pos3;
 float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
@@ -165,7 +176,8 @@ float control_values[3] = { control_val1, control_val2, control_val3 };
 float sat_control_val1, sat_control_val2, sat_control_val3;
 float sat_control_values[3] = { sat_control_val1, sat_control_val2, sat_control_val3 };
 
-bool clamp_I = false;
+bool clamp_I1 = false, clamp_I2 = false, clamp_I3 = false;
+bool clamp_I[3] = { clamp_I1, clamp_I2, clamp_I3 };
 //Uncomment when working for all joints
 //float target_pos1, target_pos2, target_pos3, target_pos4, target_pos5, target_pos6, target_pos7;
 //float* target_pos[7] = { &target_pos1, &target_pos2, &target_pos3, &target_pos4, &target_pos5, &target_pos6, &target_pos7 };
@@ -181,16 +193,29 @@ float floatFromPC = 0.0;
 boolean newData = false;
 
 //----------Lp filter variables
-double dt_xn1;
-double dt_yn1;
+float dt_xn1;
+float dt_yn1;
 bool first = true;
 
-float pre_filter_e_1, pre_filter_e_2, pre_filter_e_3;
-float e_yn1[3] = { pre_filter_e_1, pre_filter_e_2, pre_filter_e_3 };
+float pre_rate_filter_e1 = 0, pre_rate_filter_e2 = 0, pre_rate_filter_e3 = 0;
+float pre_rate_filter[3] = { pre_rate_filter_e1, pre_rate_filter_e2, pre_rate_filter_e3 };
+float pre_filter_rate_1 = 0, pre_filter_rate_2 = 0, pre_filter_rate_3 = 0;
+float pre_filter_rate[3] = { pre_filter_rate_1, pre_filter_rate_2, pre_filter_rate_3 };
 
 //----------Position sampler
 bool first_sample = true;
 unsigned long sampler_start_time;
+bool sampler_setup_flag;
+
+//----------System setup
+bool sys_ready = false;
+
+//----------Read data from SD
+// line buffer for 80 characters
+char line[81];
+bool setupFlag = true;
+long SD_sampT = 6;
+long SD_Timer;
 
 //=======================================================
 //======          Function Declaration            =======
@@ -205,6 +230,7 @@ void InitSDcard(void);
 void SaveData2SD(String data);
 void CheckCol(void);
 void PosSampler(String mode);
+void sendData(void);
 
 void setup() {
   //------------------------------Set system PSM frequency-----------------------------------
@@ -225,8 +251,14 @@ void setup() {
   servo_yaw1.attach(SERVO3);
   servo_yaw2.attach(SERVO4);
 
-  //-----------Start Serial Communication-------------
+  //-----------Start Communications-------------
   Serial.begin(115200);
+  if (!SD.begin(SS)) {
+    Serial.println("initialization failed!");
+    while (1) {};
+  }
+  Serial.println("initialization done.");
+  dataFile = SD.open("datalog.txt");
 
   //-------------Define Pins--------------------------
   //Interruput pins
@@ -273,10 +305,10 @@ void setup() {
       pinstatusNC = digitalRead(LS1_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS1_NO);  //If HIGH THEN button is not pushed
       //Debugging
-      /*Serial.print("Limit switch 1:\t");
-    Serial.print(digitalRead(LS1_NC));
-    Serial.print('\t');
-    Serial.println(digitalRead(LS1_NO));*/
+      // Serial.print("Limit switch 1:\t");
+      // Serial.print(digitalRead(LS1_NC));
+      // Serial.print('\t');
+      // Serial.println(digitalRead(LS1_NO));
 
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
@@ -334,9 +366,9 @@ void setup() {
           dir1 = -1;
           motor1.setSpeed(dir1 * speed1);
           //Serial.print("Counter1: ");
-          Serial.print(Ax1toAngle(Enc1.read()));
-          Serial.print('\t');
-          Serial.println(pos1);
+          // Serial.print(Ax1toAngle(Enc1.read()));
+          // Serial.print('\t');
+          // Serial.println(pos1);
           //Check for end position
           if (Ax1toAngle(Enc1.read()) >= pos1) {
             motor1.setSpeed(0);
@@ -359,8 +391,8 @@ void setup() {
               Enc1.write(Ax1toCounts(ref_offset1));
               ref1 = true;
               ref_drive1 = false;
-              Serial.print("Home! Position:");
-              Serial.println(Enc1.read());
+              // Serial.print("Home! Position:");
+              // Serial.println(Enc1.read());
             } else {
               ref_counter1 = Enc1.read();
               Enc1.write(0);
@@ -382,7 +414,7 @@ void setup() {
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor2---------------------------------------
     //-----------------------------------------------------------------------------------------
-    Serial.println("Start Homing: Axis 2!");
+    //Serial.println("Start Homing: Axis 2!");
     //Motor starting variables
     while (!ref2) {
       pinstatusNC = digitalRead(LS2_NC);  //If HIGH then button is pushed
@@ -391,12 +423,11 @@ void setup() {
       //Serial.print(digitalRead(LS1_NC));
       //Serial.print('\t');
       //Serial.println(digitalRead(LS1_NO));
-      Serial.println("test");
 
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
         motor2.setSpeed(0);
-        Serial.println("Reached Limit Switch");
+        //Serial.println("Reached Limit Switch");
         state = reference;
         refpos2 = true;
         ref_drive2 = true;  //Indicates current reference drive
@@ -410,7 +441,7 @@ void setup() {
 
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor2.setSpeed(0);
-        Serial.print("Limit switch 2 is broken! Emergency stop!");
+        //Serial.print("Limit switch 2 is broken! Emergency stop!");
         //Serial.print(pinstatusNC);
         //Serial.println(pinstatusNO);
         //while (1) {};
@@ -470,12 +501,12 @@ void setup() {
               Enc2.write(Ax2toCounts(ref_offset2));
               ref2 = true;
               ref_drive2 = false;
-              Serial.print("Homed2! Position");
-              Serial.println(Enc2.read());
+              //Serial.print("Homed2! Position");
+              //Serial.println(Enc2.read());
             } else {
               ref_counter2 = Enc2.read();
               Enc2.write(0);
-              Serial.println('test');
+              //Serial.println('test');
             }
           }
           //Switch phase
@@ -552,7 +583,6 @@ void setup() {
           dir3 = -1;
           motor3.setSpeed(dir3 * speed3);
           //Serial.print("Counter3: ");
-          Serial.println(Enc3.read());
           //Check for end position
           if (Ax3toAngle(Enc3.read()) >= pos3) {
             motor3.setSpeed(0);
@@ -597,19 +627,32 @@ void setup() {
     // Wait for comfirmation
     while (Serial.available() == 0) {}
     // Define encoder variables
-    Enc1.write(Ax1toCounts(-25.00)); 
-    Enc2.write(Ax2toCounts(-35.00)); 
+    Enc1.write(Ax1toCounts(-25.00));
+    Enc2.write(Ax2toCounts(-35.00));
     Enc3.write(Ax3toCounts(0.00));
   }
 
   // -------------------------------------Home DC motors-------------------------------------
   *target_pos[0] = 0, *target_pos[1] = 0, *target_pos[2] = 80;
+  c_mode = "P";
+  //Travel to initial position
+  //long home_start = millis();
+  // while ((millis() - home_start) < 3000) {  //Prevents start before ready
+  //   for (int i = 0; i < 3; i++) {
+  //     PIDupdate(target_pos[i], i, c_mode);
+  //   }
+  // }
 
   // -------------------------------------Home Servos----------------------------------------
   for (int i = 0; i < 4; i++) {
     servos[i].write(servo_off[i]);
     servo_val[i] = servo_off[i];
   }
+
+  // Tell computer system is ready
+  sys_ready = true;
+  delay(200);
+
   // Start timer
   stepResponsetimer = millis();
 }
@@ -618,68 +661,73 @@ void setup() {
 //------------------------------------------MAIN-------------------------------------------
 //-----------------------------------------------------------------------------------------
 void loop() {
-  //Create empty data string
-  String dataString = "";
-  int val;
-  int index;
+  if (sys_ready) {
+    //Create empty data string
+    //String dataString = "";
+    int val;
+    int index;
 
-  // Update control values of each motor; (Joint Space)
-  getDT();
-  LPFilter_DT();
-  dt = 0.0016;
+    // Update control values of each motor; (Joint Space)
+    getDT();
+    LPFilter_DT();
+    //dt = 0.016;
 
-  //-------------Stepresponse eval (Evaluation)-------------
-  PosSampler("Sine");
+    //-------------Stepresponse eval (Evaluation)-------------
+    PosSampler("MTM");
 
-  // Check for collision
-  //CheckCol();
+    // Check for collision
+    //CheckCol();
 
-  // Extract data from string and update target position
-  // recvWithStartEndMarkers();
-  // if (newData == true) {
-  //   strcpy(tempChars, receivedChars);
-  //   // this temporary copy is necessary to protect the original data
-  //   //   because strtok() used in parseData() replaces the commas with \0
-  //   parseData();
-  //   showParsedData();
-  //   newData = false;
-  //   //startRec = true;
-  // }
+    //Extract data from string and update target position
+    // recvWithStartEndMarkers();
+    // while (newData == true) {
+    //   strcpy(tempChars, receivedChars);
+    //   // this temporary copy is necessary to protect the original data
+    //   //   because strtok() used in parseData() replaces the commas with \0
+    //   parseData();
+    //   //showParsedData();
+    //   newData = false;
+    //   //startRec = true;
+    // }
 
-  // Limit target values
-  target_pos1 = constrain(target_pos1, -15, 15);
-  target_pos2 = constrain(target_pos2, -15, 15);
-  target_pos3 = constrain(target_pos3, 0, 120);
-  // target_pos4 = constrain(target_pos4, -90, 90);
-  // target_pos5 = constrain(target_pos5, -90, 90);
-  // target_pos6 = constrain(target_pos6, -90, 90);
-  // target_pos7 = constrain(target_pos7, -90, 90);
+    // Limit target values
+    target_pos1 = constrain(target_pos1, -15, 15);
+    target_pos2 = constrain(target_pos2, -15, 15);
+    target_pos3 = constrain(target_pos3, 0, 120);
+    // target_pos4 = constrain(target_pos4, -90, 90);
+    // target_pos5 = constrain(target_pos5, -90, 90);
+    // target_pos6 = constrain(target_pos6, -90, 90);
+    // target_pos7 = constrain(target_pos7, -90, 90);
 
-  for (int i = 0; i < 3; i++) {
-    PIDupdate(target_pos[i], i, "PID");
+    for (int i = 0; i < 3; i++) {
+      PIDupdate(target_pos[i], i, c_mode);
+    }
+
+    // Update servo motors
+    for (int i = 0; i < 4; i++) {
+      index = i + 3;
+      val = target_pos[index];
+      servos[i].write(val);
+    }
+
+    //Store Data to SD card
+    // if ((millis() - rec_start_time) <= rec_time && dataFile) {
+    //   //Save current and target value to SD card
+    //   SaveData2SD(dataString);
+    // } else if ((millis() - rec_start_time) >= rec_time && rec_flag) {
+    //   dataFile.close();
+    //   rec_flag = false;
+    //   rec_start_time = millis();
+    // } else {
+    //   rec_start_time = millis();
+    // }
+
+    // Debugging
+    SerialPrintData(12);
+
+    //Send system data to Matlab
+    //sendData();
   }
-
-  // Update servo motors
-  for (int i = 0; i < 4; i++) {
-    index = i + 3;
-    val = target_pos[index];
-    servos[i].write(val);
-  }
-
-  //Store Data to SD card
-  // if ((millis() - rec_start_time) <= rec_time && dataFile) {
-  //   //Save current and target value to SD card
-  //   SaveData2SD(dataString);
-  // } else if ((millis() - rec_start_time) >= rec_time && rec_flag) {
-  //   dataFile.close();
-  //   rec_flag = false;
-  //   rec_start_time = millis();
-  // } else {
-  //   rec_start_time = millis();
-  // }
-
-  // Debugging
-  SerialPrintData(5);
 }
 
 
@@ -691,6 +739,32 @@ void getDT(void) {
   currT = micros();
   dt = (currT - prevT) / 1.0e6;
   prevT = currT;
+}
+
+void sendData(void) {
+  Serial.print(*target_pos[0], 4);
+  Serial.print('/');
+  Serial.print(*target_pos[1], 4);
+  Serial.print('/');
+  Serial.print(*target_pos[2], 4);
+  Serial.print('/');
+  Serial.print(Ax1toAngle(Enc1.read()), 4);
+  Serial.print('/');
+  Serial.print(Ax2toAngle(Enc2.read()), 4);
+  Serial.print('/');
+  Serial.print(Ax3toAngle(Enc3.read()), 4);
+  Serial.print('/');
+  Serial.print(prev_e[0], 4);
+  Serial.print('/');
+  Serial.print(prev_e[1], 4);
+  Serial.print('/');
+  Serial.print(prev_e[2], 4);
+  Serial.print('/');
+  Serial.print(m_speed[0]);
+  Serial.print('/');
+  Serial.print(m_speed[1]);
+  Serial.print('/');
+  Serial.println(m_speed[2]);
 }
 
 float Ax1toAngle(long count) {
