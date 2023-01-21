@@ -63,7 +63,7 @@ void PosSampler(String mode) {
       break;
 
     case 3:
-      if ((millis() - stepResponsetimer) < 1000) {
+      if ((millis() - stepResponsetimer) < 2000) {
         startRec = true;
         if (setupFlag) {
           if (dataFile) {  //Get starting position
@@ -87,8 +87,8 @@ void PosSampler(String mode) {
         }
         SD_Timer = millis();
       }
-      else if(((millis() - stepResponsetimer) > 1000) && ((millis() - stepResponsetimer) < 2000)){c_mode = "PID";} 
-      else if (((millis() - stepResponsetimer) > 2000)) {//((millis() - SD_Timer) >= SD_sampT)
+      else if(((millis() - stepResponsetimer) > 2000) && ((millis() - stepResponsetimer) < 4000)){c_mode = "PID";} 
+      else if (((millis() - stepResponsetimer) > 4000)) {//((millis() - SD_Timer) >= SD_sampT)
         c_mode = "PID";
         if (dataFile) {
           // read from the file until there's nothing else in it:

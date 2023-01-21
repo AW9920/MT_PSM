@@ -30,7 +30,7 @@ void PIDupdate(float* target, int index, String mode) {
   switch (index) {
     case 0:
       current = Ax1toAngle(Enc1.read());
-      kp = 35, ki = 50, kd = 3;  //5
+      kp = 35, ki = 50, kd = 5;  //5
       clamp_Lim_up = 32;
       clamp_Lim_low = -32;
       Umag = 15.0;
@@ -44,10 +44,10 @@ void PIDupdate(float* target, int index, String mode) {
       break;
     case 2:
       current = Ax3toAngle(Enc3.read());
-      kp = 45, ki = 800, kd = 6;  //3.8
+      kp = 45, ki = 800, kd = 3.8;  //3.8
       Umag = 7.4;
-      clamp_Lim_up = 15;
-      clamp_Lim_low = -15;
+      clamp_Lim_up = 7;
+      clamp_Lim_low = -7;
       break;
     default:
       kp = 0, ki = 0, kd = 0;
@@ -131,8 +131,8 @@ void PIDupdate(float* target, int index, String mode) {
     speed = 255;
   }
 
-  if((speed < 10) && (index == 2)){
-    speed = 10;
+  if((speed < 8) && (index == 2)){
+    speed = 8;
   }
   
   m_speed[index] = dir * speed; //For Evaluation

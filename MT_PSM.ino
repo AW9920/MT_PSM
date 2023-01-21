@@ -1,32 +1,15 @@
-//Define Arduino UNO CPU clock
-#define F_CPU 16000000L
-
-//=======================================================
-//======            Include libraries             =======
-//=======================================================
-
-//#include <avr/wdt.h>  //Watchdog Timer Library
-#include "I2Cdev.h"
-#include <stdfix.h>
-#include <math.h>
-#include "CytronMotorDriver.h"
-#include <Servo.h>
-#include <SPI.h>
-#include <SD.h>
-#include <util/atomic.h>
-#include <Encoder.h>
-#define ENCODER_OPTIMIZE_INTERRUPTS
-#include <SPI.h>
-#include <SD.h>
-
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-#include "Wire.h"
-#endif
-
 //=======================================================
 //======                 Makros                   =======
 //=======================================================
+//Define Arduino UNO CPU clock
+//#define F_CPU 16000000L
 
+//Correct clock
+#define CORRECT_CLOCK 8
+#define micros() (micros() / CORRECT_CLOCK)
+#define millis() (millis() / CORRECT_CLOCK)
+
+//Define Pins
 #define ENC1_A 2
 #define ENC1_B 3
 
@@ -63,7 +46,32 @@
 #define SCK 52
 #define SS 53
 
+// Math constants
 #define PI 3.1415926535897932384626433832795
+
+//=======================================================
+//======            Include libraries             =======
+//=======================================================
+
+//#include <avr/wdt.h>  //Watchdog Timer Library
+//#include <Arduino.h>
+#include "I2Cdev.h"
+#include <stdfix.h>
+#include <math.h>
+#include "CytronMotorDriver.h"
+#include <Servo.h>
+#include <SPI.h>
+#include <SD.h>
+#include <util/atomic.h>
+#include <Encoder.h>
+#define ENCODER_OPTIMIZE_INTERRUPTS
+#include <SPI.h>
+#include <SD.h>
+#include <SoftwareSerial.h>
+
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+#include "Wire.h"
+#endif
 
 //=======================================================
 //======             GLOBAL VARIABLES             =======
@@ -79,9 +87,12 @@ bool startRec = false;
 //----------Define SD card object
 File dataFile;
 
+//----------Generate Serial object
+//SoftwareSerial SUART(0, 1);
+
 //----------State of Development
-String refDevState = "auto";  //Uncomment if auto reference works
-//String refDevState = "manual";
+//String refDevState = "auto";  //Uncomment if auto reference works
+String refDevState = "manual";
 
 //----------Configure the motor driver.
 CytronMD motor1(PWM_DIR, DC1_PWM, DC1_DIR);  // PWM 1 = Pin 4, DIR 1 = Pin 7.
@@ -95,16 +106,16 @@ Encoder Enc2(19, 18);
 Encoder Enc3(21, 20);
 
 //----------Configure Servo objects
-Servo servo_roll;
-Servo servo_pitch;
-Servo servo_yaw1;
-Servo servo_yaw2;
-Servo servos[4] = { servo_roll, servo_pitch, servo_yaw1, servo_yaw2 };
+Servo servo1;
+Servo servo2;
+Servo servo3;
+Servo servo4;
+Servo servos[4] = { servo1, servo2, servo3, servo4 };
 
 //----------Servo variables
 int servo_val1, servo_val2, servo_val3, servo_val4;
 int servo_val[4] = { servo_val1, servo_val2, servo_val3, servo_val4 };
-int servo_off1 = 99, servo_off2 = 89, servo_off3 = 92, servo_off4 = 115;
+int servo_off1 = 115, servo_off2 = 92, servo_off3 = 80, servo_off4 = 105;
 int servo_off[4] = { servo_off1, servo_off2, servo_off3, servo_off4 };
 
 //----------Optical encoder variables
@@ -144,8 +155,17 @@ float min_res1 = 0.01, min_res2 = 0.02, min_res3 = 0.03;
 float min_res[3] = { min_res1, min_res2, min_res3 };
 
 //----------Joint values
-float q1, q2, q3, q4, q5, q6, q7;
-float q[3] = { q1, q2, q3 };
+double q1, q2, q3, q4, q5, q6, q7;
+double q[3] = { q1, q2, q3 };
+//----------Corrdinates
+double x, y, z;
+float x_m, y_m, z_m;
+
+//----------Geometric Variables
+double L_RCM = 455.99;
+double L_tool = 432.5;
+double d0 = -L_RCM + L_tool;
+
 //Uncommend when working with all joints
 //float q[7] = { q1, q2, q3, q4, q5, q6, q7 };
 
@@ -169,8 +189,11 @@ float rate_e[3] = { rate_e1, rate_e2, rate_e3 };
 float prev_rate_e1 = 0, prev_rate_e2 = 0, prev_rate_e3 = 0;  //Last derivative
 float prev_rate_e[3] = { prev_rate_e1, prev_rate_e2, prev_rate_e3 };
 
-float target_pos1, target_pos2, target_pos3;
-float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
+// float target_pos1, target_pos2, target_pos3;
+// float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
+//Uncomment when working for all joints
+float target_pos1, target_pos2, target_pos3, target_pos4, target_pos5, target_pos6, target_pos7;
+float* target_pos[7] = { &target_pos1, &target_pos2, &target_pos3, &target_pos4, &target_pos5, &target_pos6, &target_pos7 };
 float control_val1, control_val2, control_val3;
 float control_values[3] = { control_val1, control_val2, control_val3 };
 float sat_control_val1, sat_control_val2, sat_control_val3;
@@ -178,12 +201,10 @@ float sat_control_values[3] = { sat_control_val1, sat_control_val2, sat_control_
 
 bool clamp_I1 = false, clamp_I2 = false, clamp_I3 = false;
 bool clamp_I[3] = { clamp_I1, clamp_I2, clamp_I3 };
-//Uncomment when working for all joints
-//float target_pos1, target_pos2, target_pos3, target_pos4, target_pos5, target_pos6, target_pos7;
-//float* target_pos[7] = { &target_pos1, &target_pos2, &target_pos3, &target_pos4, &target_pos5, &target_pos6, &target_pos7 };
+
 
 //----------Receive Data
-const byte numChars = 32;
+const byte numChars = 50;  //32
 char receivedChars[numChars];
 char tempChars[numChars];  // temporary array for use when parsing
 //variables to temp hold the parsed data
@@ -234,9 +255,9 @@ void sendData(void);
 
 void setup() {
   //------------------------------Set system PSM frequency-----------------------------------
-  // setPwmFrequency(4,1);
-  // setPwmFrequency(5,1);
-  // setPwmFrequency(6,1);
+  setPwmFrequency(4, CORRECT_CLOCK);
+  setPwmFrequency(5, CORRECT_CLOCK);
+  setPwmFrequency(6, CORRECT_CLOCK);
   //-----------Set initial conditions----------------
   motor1.setSpeed(0);
   motor2.setSpeed(0);
@@ -246,19 +267,21 @@ void setup() {
   ref_drive1 = false, ref_drive2 = false, ref_drive3 = false;
 
   //Attach pins to objects
-  servo_roll.attach(SERVO1);
-  servo_pitch.attach(SERVO2);
-  servo_yaw1.attach(SERVO3);
-  servo_yaw2.attach(SERVO4);
+  servos[0].attach(SERVO1);
+  servos[1].attach(SERVO2);
+  servos[2].attach(SERVO3);
+  servos[3].attach(SERVO4);
 
   //-----------Start Communications-------------
   Serial.begin(115200);
+  while (!Serial) {};
+  Serial2.begin(115200);
   if (!SD.begin(SS)) {
     Serial.println("initialization failed!");
-    while (1) {};
+    //while (1) {};
   }
   Serial.println("initialization done.");
-  dataFile = SD.open("datalog.txt");
+  dataFile = SD.open("datalog2.txt");
 
   //-------------Define Pins--------------------------
   //Interruput pins
@@ -288,6 +311,14 @@ void setup() {
   //-----------------------------------------------------------------------------------------
   //---------------------------------System Referencen---------------------------------------
   //-----------------------------------------------------------------------------------------
+  // -------------------------------------Home Servos----------------------------------------
+  for (int i = 0; i < 4; i++) {
+    servos[i].write(servo_off[i]);
+    Serial.print(servo_off[i]);
+    Serial.print('\t');
+    //servo_val[i] = servo_off[i];
+  }
+  // -----------------------------Home Joint 1, 2 and 3--------------------------------------
   Enc1.write(0);
   Enc2.write(0);
   Enc3.write(0);
@@ -313,7 +344,7 @@ void setup() {
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
         motor1.setSpeed(0);
-        //Serial.println("Reached Limit Switch");
+        Serial.println("Reached Limit Switch");
         state = reference;
         refpos1 = true;
         ref_drive1 = true;  //Indicates current reference drive
@@ -330,15 +361,16 @@ void setup() {
         motor1.setSpeed(0);
         //Serial.print("Limit switch 1 is broken! Emergency stop!");
         ref_drive1 = false;  //Indicates current reference drive
+        Serial.println('Limit switch 1 is borken!');
         while (1) {};
       }
 
       //---------------------Phase check-------------------------
       if (p_counter1 == 0) {
-        speed1 = 10;
+        speed1 = 8;
         pos1 = 15;
       } else if (p_counter1 == 1) {
-        speed1 = 10;
+        speed1 = 8;
         pos1 = 10;
       } else {
         speed1 = 5;
@@ -373,7 +405,9 @@ void setup() {
           if (Ax1toAngle(Enc1.read()) >= pos1) {
             motor1.setSpeed(0);
             state = home;
-            delay(1000);
+            Serial.println("1 second delay begin");
+            fixDelay(1000);
+            Serial.println("1 second delay end");
           }
           break;
 
@@ -391,8 +425,8 @@ void setup() {
               Enc1.write(Ax1toCounts(ref_offset1));
               ref1 = true;
               ref_drive1 = false;
-              // Serial.print("Home! Position:");
-              // Serial.println(Enc1.read());
+              Serial.print("Home! Position:");
+              Serial.println(Enc1.read());
             } else {
               ref_counter1 = Enc1.read();
               Enc1.write(0);
@@ -402,7 +436,9 @@ void setup() {
           p_counter1++;
           //switch case
           state = retrieve;
-          delay(1000);
+          Serial.println("1 second delay begin");
+          fixDelay(1000);
+          Serial.println("1 second delay end");
           break;
 
         default:
@@ -513,7 +549,7 @@ void setup() {
           p_counter2++;
           //switch case
           state = retrieve;
-          delay(1000);
+          fixDelay(1000);
           break;
 
         default:
@@ -587,7 +623,7 @@ void setup() {
           if (Ax3toAngle(Enc3.read()) >= pos3) {
             motor3.setSpeed(0);
             state = home;
-            delay(1000);
+            fixDelay(1000);
           }
           break;
 
@@ -613,7 +649,7 @@ void setup() {
           p_counter3++;
           //switch case
           state = retrieve;
-          delay(1000);
+          fixDelay(1000);
           break;
 
         default:
@@ -643,15 +679,9 @@ void setup() {
   //   }
   // }
 
-  // -------------------------------------Home Servos----------------------------------------
-  for (int i = 0; i < 4; i++) {
-    servos[i].write(servo_off[i]);
-    servo_val[i] = servo_off[i];
-  }
-
   // Tell computer system is ready
   sys_ready = true;
-  delay(200);
+  fixDelay(200);
 
   // Start timer
   stepResponsetimer = millis();
@@ -664,8 +694,6 @@ void loop() {
   if (sys_ready) {
     //Create empty data string
     //String dataString = "";
-    int val;
-    int index;
 
     // Update control values of each motor; (Joint Space)
     getDT();
@@ -673,42 +701,71 @@ void loop() {
     //dt = 0.016;
 
     //-------------Stepresponse eval (Evaluation)-------------
-    PosSampler("MTM");
+    //PosSampler("MTM");
 
     // Check for collision
     //CheckCol();
 
     //Extract data from string and update target position
-    // recvWithStartEndMarkers();
-    // while (newData == true) {
-    //   strcpy(tempChars, receivedChars);
-    //   // this temporary copy is necessary to protect the original data
-    //   //   because strtok() used in parseData() replaces the commas with \0
-    //   parseData();
-    //   //showParsedData();
-    //   newData = false;
-    //   //startRec = true;
-    // }
+    recvWithStartEndMarkers();
+    while (newData == true) {
+      strcpy(tempChars, receivedChars);
+      // this temporary copy is necessary to protect the original data
+      //   because strtok() used in parseData() replaces the commas with \0
+      parseData();
+      showParsedData();
+      newData = false;
+      //startRec = true;
+    }
 
     // Limit target values
     target_pos1 = constrain(target_pos1, -15, 15);
     target_pos2 = constrain(target_pos2, -15, 15);
-    target_pos3 = constrain(target_pos3, 0, 120);
-    // target_pos4 = constrain(target_pos4, -90, 90);
-    // target_pos5 = constrain(target_pos5, -90, 90);
-    // target_pos6 = constrain(target_pos6, -90, 90);
-    // target_pos7 = constrain(target_pos7, -90, 90);
+    target_pos3 = constrain(target_pos3, 40, 120);
 
+    //Compute joint values of Endo-Wrist
+    servo_val[0] = -target_pos4 / 1.563 + (servo_off[0] - 90);
+    servo_val[1] = target_pos5 / 1.019 + (servo_off[1] - 90);
+    servo_val[2] = (2 * target_pos6 - target_pos7 + 1.662 * servo_val[1]) / 2.436 + (servo_off[2] - 90);
+    servo_val[3] = (target_pos7 / 1.218) + servo_val[2] + (servo_off[3] - 90);
+    servo_val[0] = map(servo_val[0], -90, 90, 0, 180);
+    servo_val[1] = map(servo_val[1], -90, 90, 0, 180);
+    servo_val[2] = map(servo_val[2], -90, 90, 0, 180);
+    servo_val[3] = map(servo_val[3], -90, 90, 0, 180);
+    servo_val[0] = constrain(servo_val[0], 0, 180);
+    servo_val[1] = constrain(servo_val[1], 0, 180);
+    servo_val[2] = constrain(servo_val[2], 0, 180);
+    servo_val[3] = constrain(servo_val[3], 0, 180);
+
+    // Serial.print(servo_val[0]);
+    // Serial.print('\t');
+    // Serial.print(servo_val[1]);
+    // Serial.print('\t');
+    // Serial.print(servo_val[2]);
+    // Serial.print('\t');
+    // Serial.println(servo_val[3]);
+
+    // Update desired position for joints 1, 2 and 3
     for (int i = 0; i < 3; i++) {
       PIDupdate(target_pos[i], i, c_mode);
     }
 
-    // Update servo motors
+    //Update servo motors
     for (int i = 0; i < 4; i++) {
-      index = i + 3;
-      val = target_pos[index];
+      int val = servo_val[i];
       servos[i].write(val);
     }
+
+    //Compute x,y,z position (forward kinematics)
+    q[0] = Ax1toAngle(Enc1.read()) * PI / 180;  //convert to rad
+    q[1] = Ax2toAngle(Enc2.read()) * PI / 180;  //convert to rad
+    q[2] = Ax3toAngle(Enc3.read());
+    x = -cos(q[1] - PI / 2) * (q[2] + d0);
+    y = cos(q[0]) * sin(q[1] - PI / 2) * (q[2] + d0);
+    z = -sin(q[0]) * sin(q[1] - PI / 2) * (q[2] + d0);
+
+    // Debugging
+    //SerialPrintData(14);
 
     //Store Data to SD card
     // if ((millis() - rec_start_time) <= rec_time && dataFile) {
@@ -721,12 +778,6 @@ void loop() {
     // } else {
     //   rec_start_time = millis();
     // }
-
-    // Debugging
-    SerialPrintData(12);
-
-    //Send system data to Matlab
-    //sendData();
   }
 }
 
@@ -734,6 +785,28 @@ void loop() {
 //-----------------------------------------------------------------------------------------
 //-------------------------------------FUNCTIONS-------------------------------------------
 //-----------------------------------------------------------------------------------------
+String compData(double in_value1, double in_value2, double in_value3, byte signi) {
+  char buffer[20];
+  String serialData;
+
+  dtostrf(in_value1, 0, 2, buffer);
+  serialData = "<";
+  serialData += buffer;
+  serialData += ",";
+  dtostrf(in_value2, 0, 2, buffer);
+  serialData += buffer;
+  serialData += ",";
+  dtostrf(in_value3, 0, 2, buffer);
+  serialData += buffer;
+  serialData += ">";
+
+  return serialData;
+}
+
+void fixDelay(uint32_t ms) {
+  delay(ms * CORRECT_CLOCK);
+}
+
 void getDT(void) {
   //Only call once in routine
   currT = micros();

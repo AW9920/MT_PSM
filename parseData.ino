@@ -11,15 +11,15 @@ void parseData(void) {  // split the data into its parts
   strtokIndx = strtok(NULL, ",");
   target_pos3 = atof(strtokIndx);
 
-  // strtokIndx = strtok(NULL, ",");
-  // target_pos4 = atof(strtokIndx);
+  strtokIndx = strtok(NULL, ",");
+  target_pos4 = atof(strtokIndx);
 
-  // strtokIndx = strtok(NULL, ",");
-  // target_pos5 = atof(strtokIndx);
+  strtokIndx = strtok(NULL, ",");
+  target_pos5 = atof(strtokIndx);
 
-  // strtokIndx = strtok(NULL, ",");
-  // target_pos6 = atof(strtokIndx);
+  strtokIndx = strtok(NULL, ",");
+  target_pos6 = atof(strtokIndx);
 
-  // strtokIndx = strtok(NULL, ",");
-  // target_pos7 = atof(strtokIndx);
+  strtokIndx = strtok(NULL, ",");
+  target_pos7 = atof(strtokIndx);
 }

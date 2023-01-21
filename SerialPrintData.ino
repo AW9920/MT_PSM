@@ -173,12 +173,50 @@ void SerialPrintData(int type) {
       }
       break;
 
-      case 13:
-        Serial.print(m_speed[0]);
-        Serial.print('\t');
-        Serial.print(m_speed[1]);
-        Serial.print('\t');
-        Serial.println(m_speed[2]);
+    case 13:
+      Serial.print(m_speed[0]);
+      Serial.print('\t');
+      Serial.print(m_speed[1]);
+      Serial.print('\t');
+      Serial.println(m_speed[2]);
+      break;
+
+    case 14:
+      Serial.print(*target_pos[0], 4);
+      Serial.print('\t');
+      Serial.print(*target_pos[1], 4);
+      Serial.print('\t');
+      Serial.print(*target_pos[2], 4);
+      Serial.print('\t');
+      Serial.print(ax1_angle, 4);
+      Serial.print('\t');
+      Serial.print(ax2_angle, 4);
+      Serial.print('\t');
+      Serial.print(ax3_angle, 4);
+      Serial.print('\t');
+      Serial.print(prev_e[0], 4);
+      Serial.print('\t');
+      Serial.print(prev_e[1], 4);
+      Serial.print('\t');
+      Serial.print(prev_e[2], 4);
+      Serial.print('\t');
+      Serial.print(m_speed[0]);
+      Serial.print('\t');
+      Serial.print(m_speed[1]);
+      Serial.print('\t');
+      Serial.print(m_speed[2]);
+      Serial.print('\t');
+      Serial.print(x, 2);
+      Serial.print('\t');
+      Serial.print(y, 2);
+      Serial.print('\t');
+      Serial.print(z, 2);
+      Serial.print('\t');
+      Serial.print(x_m, 2);
+      Serial.print('\t');
+      Serial.print(y_m, 2);
+      Serial.print('\t');
+      Serial.println(z_m, 2);
       break;
   }
 }
