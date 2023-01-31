@@ -91,8 +91,8 @@ File dataFile;
 //SoftwareSerial SUART(0, 1);
 
 //----------State of Development
-//String refDevState = "auto";  //Uncomment if auto reference works
-String refDevState = "manual";
+String refDevState = "auto";  //Uncomment if auto reference works
+//String refDevState = "manual";
 
 //----------Configure the motor driver.
 CytronMD motor1(PWM_DIR, DC1_PWM, DC1_DIR);  // PWM 1 = Pin 4, DIR 1 = Pin 7.
@@ -204,7 +204,7 @@ bool clamp_I[3] = { clamp_I1, clamp_I2, clamp_I3 };
 
 
 //----------Receive Data
-const byte numChars = 50;  //32
+const byte numChars = 81;  //32
 char receivedChars[numChars];
 char tempChars[numChars];  // temporary array for use when parsing
 //variables to temp hold the parsed data
@@ -237,6 +237,11 @@ char line[81];
 bool setupFlag = true;
 long SD_sampT = 6;
 long SD_Timer;
+
+//----------Latency----------------
+unsigned long receive_time;
+unsigned long latency;
+unsigned long send_time_received;
 
 //=======================================================
 //======          Function Declaration            =======
@@ -709,11 +714,14 @@ void loop() {
     //Extract data from string and update target position
     recvWithStartEndMarkers();
     while (newData == true) {
+      receive_time = millis();
       strcpy(tempChars, receivedChars);
       // this temporary copy is necessary to protect the original data
       //   because strtok() used in parseData() replaces the commas with \0
       parseData();
-      showParsedData();
+      latency = receive_time - send_time_received;
+      //Serial.println(latency/1000);
+      //showParsedData();
       newData = false;
       //startRec = true;
     }
@@ -765,7 +773,7 @@ void loop() {
     z = -sin(q[0]) * sin(q[1] - PI / 2) * (q[2] + d0);
 
     // Debugging
-    //SerialPrintData(14);
+    SerialPrintData(14);
 
     //Store Data to SD card
     // if ((millis() - rec_start_time) <= rec_time && dataFile) {

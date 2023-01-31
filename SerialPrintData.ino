@@ -210,13 +210,13 @@ void SerialPrintData(int type) {
       Serial.print('\t');
       Serial.print(y, 2);
       Serial.print('\t');
-      Serial.print(z, 2);
-      Serial.print('\t');
-      Serial.print(x_m, 2);
-      Serial.print('\t');
-      Serial.print(y_m, 2);
-      Serial.print('\t');
-      Serial.println(z_m, 2);
+      Serial.println(z, 2);
+      // Serial.print('\t');
+      // Serial.print(x_m, 2);
+      // Serial.print('\t');
+      // Serial.print(y_m, 2);
+      // Serial.print('\t');
+      // Serial.println(z_m, 2);
       break;
   }
 }
