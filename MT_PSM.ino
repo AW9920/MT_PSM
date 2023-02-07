@@ -773,7 +773,7 @@ void loop() {
     z = -sin(q[0]) * sin(q[1] - PI / 2) * (q[2] + d0);
 
     // Debugging
-    SerialPrintData(14);
+    SerialPrintData(15);
 
     //Store Data to SD card
     // if ((millis() - rec_start_time) <= rec_time && dataFile) {

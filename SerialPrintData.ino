@@ -182,6 +182,9 @@ void SerialPrintData(int type) {
       break;
 
     case 14:
+      ax1_angle = Ax1toAngle(Enc1.read());
+      ax2_angle = Ax2toAngle(Enc2.read());
+      ax3_angle = Ax3toAngle(Enc3.read());
       Serial.print(*target_pos[0], 4);
       Serial.print('\t');
       Serial.print(*target_pos[1], 4);
@@ -217,6 +220,24 @@ void SerialPrintData(int type) {
       // Serial.print(y_m, 2);
       // Serial.print('\t');
       // Serial.println(z_m, 2);
+      break;
+
+    case 15:
+      Serial.print(*target_pos[3], 2);
+      Serial.print('\t');
+      Serial.print(*target_pos[4], 2);
+      Serial.print('\t');
+      Serial.print(*target_pos[5], 2);
+      Serial.print('\t');
+      Serial.print(*target_pos[6], 2);
+      Serial.print("\t");
+      Serial.print(servo_val[0]);
+      Serial.print("\t");
+      Serial.print(servo_val[1]);
+      Serial.print("\t");
+      Serial.print(servo_val[2]);
+      Serial.print("\t");
+      Serial.println(servo_val[3]);
       break;
   }
 }
