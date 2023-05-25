@@ -124,7 +124,6 @@ void PIDupdate(float* target, int index, String mode) {
   if (u < 0) {
     dir = 1;
   }
-  //u = (u/Umag) * 255.0;
   //Determine speed
   speed = (int)fabs(u);
   if (speed > 255) {

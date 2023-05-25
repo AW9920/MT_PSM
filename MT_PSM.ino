@@ -1,9 +1,6 @@
 //=======================================================
 //======                 Makros                   =======
 //=======================================================
-//Define Arduino UNO CPU clock
-//#define F_CPU 16000000L
-
 //Correct clock
 #define CORRECT_CLOCK 8
 #define micros() (micros() / CORRECT_CLOCK)
@@ -87,9 +84,6 @@ bool startRec = false;
 //----------Define SD card object
 File dataFile;
 
-//----------Generate Serial object
-//SoftwareSerial SUART(0, 1);
-
 //----------State of Development
 String refDevState = "auto";  //Uncomment if auto reference works
 //String refDevState = "manual";
@@ -166,9 +160,6 @@ double L_RCM = 455.99;
 double L_tool = 432.5;
 double d0 = -L_RCM + L_tool;
 
-//Uncommend when working with all joints
-//float q[7] = { q1, q2, q3, q4, q5, q6, q7 };
-
 //----------Maxon Motor variables
 int speed1, speed2, speed3;
 int m_speed[3] = { speed1, speed2, speed3 };
@@ -189,9 +180,6 @@ float rate_e[3] = { rate_e1, rate_e2, rate_e3 };
 float prev_rate_e1 = 0, prev_rate_e2 = 0, prev_rate_e3 = 0;  //Last derivative
 float prev_rate_e[3] = { prev_rate_e1, prev_rate_e2, prev_rate_e3 };
 
-// float target_pos1, target_pos2, target_pos3;
-// float* target_pos[3] = { &target_pos1, &target_pos2, &target_pos3 };
-//Uncomment when working for all joints
 float target_pos1, target_pos2, target_pos3, target_pos4, target_pos5, target_pos6, target_pos7;
 float* target_pos[7] = { &target_pos1, &target_pos2, &target_pos3, &target_pos4, &target_pos5, &target_pos6, &target_pos7 };
 float control_val1, control_val2, control_val3;
@@ -283,7 +271,6 @@ void setup() {
   Serial2.begin(115200);
   if (!SD.begin(SS)) {
     Serial.println("initialization failed!");
-    //while (1) {};
   }
   Serial.println("initialization done.");
   dataFile = SD.open("datalog2.txt");
@@ -321,7 +308,6 @@ void setup() {
     servos[i].write(servo_off[i]);
     Serial.print(servo_off[i]);
     Serial.print('\t');
-    //servo_val[i] = servo_off[i];
   }
   // -----------------------------Home Joint 1, 2 and 3--------------------------------------
   Enc1.write(0);
@@ -331,7 +317,7 @@ void setup() {
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor1---------------------------------------
     //-----------------------------------------------------------------------------------------
-    //Serial.println("Start Homing: Axis 1!");
+    Serial.println("Start Homing: Axis 1!");
     //Check pin status
     int pinstatusNC;
     int pinstatusNO;
@@ -340,11 +326,6 @@ void setup() {
     while (!ref1) {
       pinstatusNC = digitalRead(LS1_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS1_NO);  //If HIGH THEN button is not pushed
-      //Debugging
-      // Serial.print("Limit switch 1:\t");
-      // Serial.print(digitalRead(LS1_NC));
-      // Serial.print('\t');
-      // Serial.println(digitalRead(LS1_NO));
 
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
@@ -356,7 +337,7 @@ void setup() {
       }
 
       else if (pinstatusNC == LOW && pinstatusNO == HIGH && !ref_drive1) {  //Does not touch endposition
-        //Serial.println("Initial sate: Not at limit switch");
+        Serial.println("Initial sate: Not at limit switch");
         state = home;
         refpos1 = false;
         ref_drive1 = true;  //Indicates current reference drive
@@ -364,9 +345,8 @@ void setup() {
 
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor1.setSpeed(0);
-        //Serial.print("Limit switch 1 is broken! Emergency stop!");
+        Serial.print("Limit switch 1 is broken! Emergency stop!");
         ref_drive1 = false;  //Indicates current reference drive
-        Serial.println('Limit switch 1 is borken!');
         while (1) {};
       }
 
@@ -402,17 +382,11 @@ void setup() {
         case 1:  //RETRIEVE
           dir1 = -1;
           motor1.setSpeed(dir1 * speed1);
-          //Serial.print("Counter1: ");
-          // Serial.print(Ax1toAngle(Enc1.read()));
-          // Serial.print('\t');
-          // Serial.println(pos1);
           //Check for end position
           if (Ax1toAngle(Enc1.read()) >= pos1) {
             motor1.setSpeed(0);
             state = home;
-            Serial.println("1 second delay begin");
             fixDelay(1000);
-            Serial.println("1 second delay end");
           }
           break;
 
@@ -444,26 +418,18 @@ void setup() {
           Serial.println("1 second delay begin");
           fixDelay(1000);
           Serial.println("1 second delay end");
-          break;
-
-        default:
-          // Statement(s)
-          break;  // Wird nicht benötigt, wenn Statement(s) vorhanden sind
+          break;  
       }
     }
 
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor2---------------------------------------
     //-----------------------------------------------------------------------------------------
-    //Serial.println("Start Homing: Axis 2!");
+    Serial.println("Start Homing: Axis 2!");
     //Motor starting variables
     while (!ref2) {
       pinstatusNC = digitalRead(LS2_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS2_NO);  //If HIGH THEN button is not pushed
-      //Serial.print("Limit switch 2:\t");
-      //Serial.print(digitalRead(LS1_NC));
-      //Serial.print('\t');
-      //Serial.println(digitalRead(LS1_NO));
 
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
@@ -482,10 +448,7 @@ void setup() {
 
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor2.setSpeed(0);
-        //Serial.print("Limit switch 2 is broken! Emergency stop!");
-        //Serial.print(pinstatusNC);
-        //Serial.println(pinstatusNO);
-        //while (1) {};
+        Serial.print("Limit switch 2 is broken! Emergency stop!");
       }
 
       //---------------------Phase check-------------------------
@@ -520,8 +483,6 @@ void setup() {
         case 1:  //RETRIEVE
           dir2 = -1;
           motor2.setSpeed(dir2 * speed2);
-          //Serial.print("Counter2: ");
-          //Serial.println(counter2);
           //Check for end position
           if (Ax2toAngle(Enc2.read()) >= pos2) {
             motor2.setSpeed(0);
@@ -542,12 +503,10 @@ void setup() {
               Enc2.write(Ax2toCounts(ref_offset2));
               ref2 = true;
               ref_drive2 = false;
-              //Serial.print("Homed2! Position");
-              //Serial.println(Enc2.read());
+              Serial.print("Homed2! Position");
             } else {
               ref_counter2 = Enc2.read();
               Enc2.write(0);
-              //Serial.println('test');
             }
           }
           //Switch phase
@@ -556,16 +515,13 @@ void setup() {
           state = retrieve;
           fixDelay(1000);
           break;
-
-        default:
-          // Statement(s)
-          break;  // Wird nicht benötigt, wenn Statement(s) vorhanden sind
       }
     }
 
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor3---------------------------------------
     //-----------------------------------------------------------------------------------------
+     Serial.println("Start Homing: Axis 3!");
     while (!ref3) {
       pinstatusNC = digitalRead(LS3_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS3_NO);  //If HIGH THEN button is not pushed
@@ -573,7 +529,7 @@ void setup() {
       //--------------------Check status-------------------------
       if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Touches Endposition
         motor3.setSpeed(0);
-        //Serial.println("Reached Limit Switch");
+        Serial.println("Reached Limit Switch");
         state = reference;
         refpos3 = true;
         ref_drive3 = true;  //Indicates current reference drive
@@ -587,7 +543,7 @@ void setup() {
 
       else if (pinstatusNC == LOW && pinstatusNO == LOW) {
         motor3.setSpeed(0);
-        //Serial.print("Limit switch 3 is broken! Emergency stop!");
+        Serial.print("Limit switch 3 is broken! Emergency stop!");
         while (1) {};
       }
 
@@ -610,7 +566,6 @@ void setup() {
       switch (state) {
 
         case 0:  //HOME
-          //Serial.println("Homing!");
           dir3 = 1;
           motor3.setSpeed(dir3 * speed3);
           if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Redundant check
@@ -623,7 +578,6 @@ void setup() {
         case 1:  //RETRIEVE
           dir3 = -1;
           motor3.setSpeed(dir3 * speed3);
-          //Serial.print("Counter3: ");
           //Check for end position
           if (Ax3toAngle(Enc3.read()) >= pos3) {
             motor3.setSpeed(0);
@@ -656,10 +610,6 @@ void setup() {
           state = retrieve;
           fixDelay(1000);
           break;
-
-        default:
-          // Statement(s)
-          break;  // Wird nicht benötigt, wenn Statement(s) vorhanden sind
       }
     }
   } else if (refDevState == "manual") {  //Reference drive is skipped; Offset values are asigned manually
@@ -676,13 +626,6 @@ void setup() {
   // -------------------------------------Home DC motors-------------------------------------
   *target_pos[0] = 0, *target_pos[1] = 0, *target_pos[2] = 80;
   c_mode = "P";
-  //Travel to initial position
-  //long home_start = millis();
-  // while ((millis() - home_start) < 3000) {  //Prevents start before ready
-  //   for (int i = 0; i < 3; i++) {
-  //     PIDupdate(target_pos[i], i, c_mode);
-  //   }
-  // }
 
   // Tell computer system is ready
   sys_ready = true;
@@ -697,19 +640,10 @@ void setup() {
 //-----------------------------------------------------------------------------------------
 void loop() {
   if (sys_ready) {
-    //Create empty data string
-    //String dataString = "";
 
     // Update control values of each motor; (Joint Space)
     getDT();
     LPFilter_DT();
-    //dt = 0.016;
-
-    //-------------Stepresponse eval (Evaluation)-------------
-    //PosSampler("MTM");
-
-    // Check for collision
-    //CheckCol();
 
     //Extract data from string and update target position
     recvWithStartEndMarkers();
@@ -720,10 +654,7 @@ void loop() {
       //   because strtok() used in parseData() replaces the commas with \0
       parseData();
       latency = receive_time - send_time_received;
-      //Serial.println(latency/1000);
-      //showParsedData();
       newData = false;
-      //startRec = true;
     }
 
     // Limit target values
@@ -744,14 +675,6 @@ void loop() {
     servo_val[1] = constrain(servo_val[1], 0, 180);
     servo_val[2] = constrain(servo_val[2], 0, 180);
     servo_val[3] = constrain(servo_val[3], 0, 180);
-
-    // Serial.print(servo_val[0]);
-    // Serial.print('\t');
-    // Serial.print(servo_val[1]);
-    // Serial.print('\t');
-    // Serial.print(servo_val[2]);
-    // Serial.print('\t');
-    // Serial.println(servo_val[3]);
 
     // Update desired position for joints 1, 2 and 3
     for (int i = 0; i < 3; i++) {
@@ -774,21 +697,8 @@ void loop() {
 
     // Debugging
     SerialPrintData(15);
-
-    //Store Data to SD card
-    // if ((millis() - rec_start_time) <= rec_time && dataFile) {
-    //   //Save current and target value to SD card
-    //   SaveData2SD(dataString);
-    // } else if ((millis() - rec_start_time) >= rec_time && rec_flag) {
-    //   dataFile.close();
-    //   rec_flag = false;
-    //   rec_start_time = millis();
-    // } else {
-    //   rec_start_time = millis();
-    // }
   }
 }
-
 
 //-----------------------------------------------------------------------------------------
 //-------------------------------------FUNCTIONS-------------------------------------------

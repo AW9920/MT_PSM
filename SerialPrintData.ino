@@ -9,10 +9,6 @@ void SerialPrintData(int type) {
   float ax1_angle, ax2_angle, ax3_angle;
   switch (type) {
     case 0:
-      // samplingTime = millis() - currentTime;
-      // //Output sampling Time
-      // Serial.print("Sampling Time:");
-      // Serial.println(samplingTime);
       Serial.println(dt, 6);
       break;
 
@@ -214,12 +210,6 @@ void SerialPrintData(int type) {
       Serial.print(y, 2);
       Serial.print('\t');
       Serial.println(z, 2);
-      // Serial.print('\t');
-      // Serial.print(x_m, 2);
-      // Serial.print('\t');
-      // Serial.print(y_m, 2);
-      // Serial.print('\t');
-      // Serial.println(z_m, 2);
       break;
 
     case 15:

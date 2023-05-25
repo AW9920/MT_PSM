@@ -113,16 +113,5 @@ void PosSampler(String mode) {
         SD_Timer = millis();
       }
       break;
-      // else {
-      //   for (int i = 0; i < (sizeof(target_pos) / sizeof(target_pos[0])); i++) {
-      //     if (i != 2) {
-      //       *target_pos[i] = 0;
-      //     } else {
-      //       *target_pos[i] = 80;
-      //     }
-      //   }
-      // }
-    default:
-      break;
   }
 }
