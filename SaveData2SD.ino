@@ -2,9 +2,9 @@ void SaveData2SD(String data) {
   // Function variables
   int index = 0;
   //Update joint values
-  q[0] = Ax1toAngle(counter1);
-  q[1] = Ax2toAngle(counter2);
-  q[2] = Ax3toAngle(counter3);
+  q[0] = Ax1toAngle(Enc1.read());
+  q[1] = Ax2toAngle(Enc2.read());
+  q[2] = Ax3toAngle(Enc3.read());
 
   //Pack data string
   for (int i = 0; i < (sizeof(target_pos) / sizeof(target_pos[0]) + sizeof(target_pos) / sizeof(target_pos[0])); i++) {
