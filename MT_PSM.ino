@@ -2,46 +2,42 @@
 //======                 Makros                   =======
 //=======================================================
 //Correct clock
-#define CORRECT_CLOCK 8
-#define micros() (micros() / CORRECT_CLOCK)
-#define millis() (millis() / CORRECT_CLOCK)
+//#define CORRECT_CLOCK 8     //Required for Arduino Mega
+//#define micros() (micros() / CORRECT_CLOCK)
+//#define millis() (millis() / CORRECT_CLOCK)
 
 //Define Pins
-#define ENC1_A 2
-#define ENC1_B 3
+#define ENC1_A 0
+#define ENC1_B 1
+#define ENC2_A 2
+#define ENC2_B 3
+#define ENC3_A 4
+#define ENC3_B 5
 
-#define CS_SD 15
+#define DC1_PWM 6
+#define DC2_PWM 7
+#define DC3_PWM 8
 
-#define ENC2_A 18
-#define ENC2_B 19
+#define DC1_DIR 24
+#define DC2_DIR 25
+#define DC3_DIR 26
 
-#define ENC3_A 20
-#define ENC3_B 21
+#define SERVO1 9
+#define SERVO2 10
+#define SERVO3 11
+#define SERVO4 12
 
-#define DC1_PWM 4
-#define DC2_PWM 5
-#define DC3_PWM 6
+#define LS1_NC 22
+#define LS1_NO 23
+#define LS2_NC 20
+#define LS2_NO 21
+#define LS3_NC 18
+#define LS3_NO 19
 
-#define DC1_DIR 7
-#define DC2_DIR 8
-#define DC3_DIR 9
-
-#define SERVO1 10
-#define SERVO2 11
-#define SERVO3 12
-#define SERVO4 13
-
-#define LS1_NC 49
-#define LS1_NO 48
-#define LS2_NC 47
-#define LS2_NO 46
-#define LS3_NC 45
-#define LS3_NO 44
-
-#define MISO 50
-#define MOSI 51
-#define SCK 52
-#define SS 53
+//#define MISO 50
+//#define MOSI 51
+//#define SCK 52
+//#define SS 53
 
 // Math constants
 #define PI 3.1415926535897932384626433832795
@@ -95,9 +91,9 @@ CytronMD motor3(PWM_DIR, DC3_PWM, DC3_DIR);  // PWM 2 = Pin 6, DIR 2 = Pin 9.
 CytronMD motor[3] = { motor1, motor2, motor3 };
 
 //----------Encoder objects
-Encoder Enc1(3, 2);
-Encoder Enc2(19, 18);
-Encoder Enc3(21, 20);
+Encoder Enc1(ENC1_B, ENC1_A);
+Encoder Enc2(ENC2_B, ENC2_A);
+Encoder Enc3(ENC3_B, ENC3_A);
 
 //----------Configure Servo objects
 Servo servo1;
@@ -239,18 +235,15 @@ void parseData(void);
 void showParsedData(void);
 void PIDupdate(float* target, int index, String mode);
 void SerialPrintData(int type);
-void setPwmFrequency(int pin, int divisor);
-void InitSDcard(void);
 void SaveData2SD(String data);
 void CheckCol(void);
 void PosSampler(String mode);
 void sendData(void);
+void setPWMfrequency(void);
 
 void setup() {
   //------------------------------Set system PSM frequency-----------------------------------
-  setPwmFrequency(4, CORRECT_CLOCK);
-  setPwmFrequency(5, CORRECT_CLOCK);
-  setPwmFrequency(6, CORRECT_CLOCK);
+  setPWMfrequency();
   //-----------Set initial conditions----------------
   motor1.setSpeed(0);
   motor2.setSpeed(0);
@@ -268,12 +261,8 @@ void setup() {
   //-----------Start Communications-------------
   Serial.begin(115200);
   while (!Serial) {};
-  Serial2.begin(115200);
-  if (!SD.begin(SS)) {
-    Serial.println("initialization failed!");
-  }
+  Serial3.begin(115200);
   Serial.println("initialization done.");
-  dataFile = SD.open("datalog2.txt");
 
   //-------------Define Pins--------------------------
   //Interruput pins
@@ -415,9 +404,9 @@ void setup() {
           p_counter1++;
           //switch case
           state = retrieve;
-          Serial.println("1 second delay begin");
+          //Serial.println("1 second delay begin");
           fixDelay(1000);
-          Serial.println("1 second delay end");
+          //Serial.println("1 second delay end");
           break;  
       }
     }
@@ -471,7 +460,7 @@ void setup() {
 
         case 0:  //HOME
           //Serial.println("Homing!");
-          dir2 = 1;
+          dir2 = -1;
           motor2.setSpeed(dir2 * speed2);
           if (pinstatusNC == HIGH && pinstatusNO == LOW) {  //Redundant check
             motor2.setSpeed(0);
@@ -481,7 +470,7 @@ void setup() {
           break;
 
         case 1:  //RETRIEVE
-          dir2 = -1;
+          dir2 = 1;
           motor2.setSpeed(dir2 * speed2);
           //Check for end position
           if (Ax2toAngle(Enc2.read()) >= pos2) {
@@ -503,7 +492,7 @@ void setup() {
               Enc2.write(Ax2toCounts(ref_offset2));
               ref2 = true;
               ref_drive2 = false;
-              Serial.print("Homed2! Position");
+              Serial.print("Homed Axis2!");
             } else {
               ref_counter2 = Enc2.read();
               Enc2.write(0);
@@ -549,13 +538,13 @@ void setup() {
 
       //---------------------Phase check-------------------------
       if (p_counter3 == 0) {
-        speed3 = 80;
+        speed3 = 180;
         pos3 = 20;
       } else if (p_counter3 == 1) {
-        speed3 = 80;
+        speed3 = 180;
         pos3 = 10;
       } else {
-        speed3 = 80;
+        speed3 = 180;
         pos3 = 5;
       }
 
@@ -621,6 +610,7 @@ void setup() {
     Enc1.write(Ax1toCounts(-25.00));
     Enc2.write(Ax2toCounts(-35.00));
     Enc3.write(Ax3toCounts(0.00));
+    delay(1000);
   }
 
   // -------------------------------------Home DC motors-------------------------------------
@@ -656,6 +646,7 @@ void loop() {
       latency = receive_time - send_time_received;
       newData = false;
     }
+    //showParsedData();
 
     // Limit target values
     target_pos1 = constrain(target_pos1, -15, 15);
@@ -696,7 +687,7 @@ void loop() {
     z = -sin(q[0]) * sin(q[1] - PI / 2) * (q[2] + d0);
 
     // Debugging
-    SerialPrintData(15);
+    SerialPrintData(14);
   }
 }
 
@@ -722,7 +713,7 @@ String compData(double in_value1, double in_value2, double in_value3, byte signi
 }
 
 void fixDelay(uint32_t ms) {
-  delay(ms * CORRECT_CLOCK);
+  delay(ms);
 }
 
 void getDT(void) {
@@ -778,7 +769,7 @@ float Ax3toAngle(long count) {
   float D = 19.10;
   float pi = 3.1416;
   float ref = 360;
-  q = (-1) * pi * D * (float)count * res_avago / ref;
+  q = (1) * pi * D * (float)count * res_avago / ref;
   return q;
 }
 
@@ -801,7 +792,7 @@ int Ax3toCounts(float pos) {
   //float trans = 0.637;
   float D = 19.10;
   float ref = 360;
-  q = int(-1.0 * (pos * ref) / (PI * D * res_avago));
+  q = int(1.0 * (pos * ref) / (PI * D * res_avago));
   return q;
 }
 

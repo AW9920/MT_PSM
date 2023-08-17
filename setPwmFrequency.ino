@@ -1,20 +1,6 @@
-void setPwmFrequency(int pin, int divisor) {
-  byte mode;
-  if (pin == 4 || pin == 5 || pin == 6) {
-    switch (divisor) {
-      case 1: mode = 0x01; break;
-      case 8: mode = 0x02; break;
-      case 64: mode = 0x03; break; //(default)
-      case 256: mode = 0x04; break;
-      case 1024: mode = 0x05; break;
-      default: return;
-    }
-    if (pin == 4) {
-      TCCR0B = TCCR0B & 0b11111000 | mode;
-    } else if (pin == 5) {
-      TCCR3B = TCCR3B & 0b11111000 | mode;
-    } else if (pin == 6) {
-      TCCR4B = TCCR4B & 0b11111000 | mode;
-    }
-  }
+void setPWMfrequency(void){
+  float PWM_freq = 14000.0;
+  analogWriteFrequency(DC1_PWM,PWM_freq);
+  analogWriteFrequency(DC2_PWM,PWM_freq);
+  analogWriteFrequency(DC3_PWM,PWM_freq);
 }
