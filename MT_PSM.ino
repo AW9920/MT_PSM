@@ -42,6 +42,9 @@
 // Math constants
 #define PI 3.1415926535897932384626433832795
 
+#define PSM_L
+//#define PSM_R
+
 //=======================================================
 //======            Include libraries             =======
 //=======================================================
@@ -103,10 +106,19 @@ Servo servo4;
 Servo servos[4] = { servo1, servo2, servo3, servo4 };
 
 //----------Servo variables
+#ifdef PSM_R
 int servo_val1, servo_val2, servo_val3, servo_val4;
 int servo_val[4] = { servo_val1, servo_val2, servo_val3, servo_val4 };
 int servo_off1 = 115, servo_off2 = 92, servo_off3 = 80, servo_off4 = 105;
 int servo_off[4] = { servo_off1, servo_off2, servo_off3, servo_off4 };
+#endif
+
+#ifdef PSM_L
+int servo_val1, servo_val2, servo_val3, servo_val4;
+int servo_val[4] = { servo_val1, servo_val2, servo_val3, servo_val4 };
+int servo_off1 = 100, servo_off2 = 97, servo_off3 = 90, servo_off4 = 92;
+int servo_off[4] = { servo_off1, servo_off2, servo_off3, servo_off4 };
+#endif
 
 //----------Optical encoder variables
 long raw_pos1, raw_pos2, raw_pos3;
