@@ -1,3 +1,6 @@
+/*This function reads the string from the serial port and stors each element into a new buffer array.
+As the endMarker (">") is reached the command line is completet is processed further by parseData() later.
+*/
 void recvWithStartEndMarkers(void) {
   static boolean recvInProgress = false;
   static byte ndx = 0;

@@ -419,7 +419,7 @@ void setup() {
           //Serial.println("1 second delay begin");
           fixDelay(1000);
           //Serial.println("1 second delay end");
-          break;  
+          break;
       }
     }
 
@@ -465,6 +465,7 @@ void setup() {
       }
 
       //--------------------State machine-----------------------
+      // This statemachine references the incremental encoder. A propper flow chart can be found in the Master Thesis in Appendix
       // Case 0 ---> Home (Move to LS)
       // Case 1 ---> Retrieve (Move away from LS_
       // Case 2 ---> Reference
@@ -522,7 +523,7 @@ void setup() {
     //-----------------------------------------------------------------------------------------
     //------------------------------Referenzfahrt Motor3---------------------------------------
     //-----------------------------------------------------------------------------------------
-     Serial.println("Start Homing: Axis 3!");
+    Serial.println("Start Homing: Axis 3!");
     while (!ref3) {
       pinstatusNC = digitalRead(LS3_NC);  //If HIGH then button is pushed
       pinstatusNO = digitalRead(LS3_NO);  //If HIGH THEN button is not pushed
@@ -613,7 +614,13 @@ void setup() {
           break;
       }
     }
-  } else if (refDevState == "manual") {  //Reference drive is skipped; Offset values are asigned manually
+  }
+  //-----------------------------------------------------------------------------------------
+  //-----------------------------------Manual Homing-----------------------------------------
+  //-----------------------------------------------------------------------------------------
+  //This routine is called if the Homing mode is set to "manuel". I this case just bring the axis 1 - 3 to their zero pos and confirm
+  //by sending a char over Serial Port
+  else if (refDevState == "manual") {  //Reference drive is skipped; Offset values are asigned manually
     Serial.println("Bring PSM manually to Limit Switches and comfirm state with INPUT: ");
     Serial.flush();
     // Wait for comfirmation

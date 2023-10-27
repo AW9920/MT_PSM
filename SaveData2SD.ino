@@ -1,3 +1,7 @@
+/* This function was used in the first revision of the PSM to record the system behaviour on an SD card for later analyzation.
+The function served no purpose in the 2nd version of the PSM.
+However it may be reinstated to record and process system data whenever required.
+*/
 void SaveData2SD(String data) {
   // Function variables
   int index = 0;

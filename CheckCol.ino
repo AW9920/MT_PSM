@@ -1,3 +1,4 @@
+/*This function should check if the limites are reached during runtime. It is not used for this iteration of the PSM*/
 void CheckCol(void){
   if (digitalRead(LS1_NC) == HIGH && digitalRead(LS1_NO) == LOW) {
     motor[0].setSpeed(0);

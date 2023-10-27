@@ -1,11 +1,27 @@
-void SerialPrintData(int type) {
+/* Thes function is a debugging tool. It has multiple modes that allow to look at a number of predefined values
+Input arguments:
+  -type: Determines what values are looked at.
+
+Below is a list which case prints which data
   //0 ->  "SamplingTime"
   //1 ->  "Joint Axis 1, 2 and 3 raw sensor value"
   //2 ->  "Joint Axis 1, 2 and 3 joint value"
   //3 ->  "Target position callback"
-  //4 ->
-  //5 ->  "Record step response of PSM"
+  //4 ->  "Joint values of Axis 1, 2 and 3 plus corresponding control vlaues"
+  //5 ->  "Record step response of PSM" (desired and actual encoder values of Ax 1, 2 and 3)
+  //6 ->  "Sampling Time (can be deleted)"
+  //7 ->  "Filtered error rate de/dt of previous iteration"
+  //8 ->  "Error values e of the previous iteration"
+  //9 ->  "Error values e of the previous iteration plus resulting control values u"
+  //10 ->  "integrated error plus the values resulting from active clamping"
+  //11 ->  "Error values e of the previous iteration plus resulting control values u (Same as 9; can be deleted)"
+  //12 ->  "Display of desired and current position data, error and resulting control values"
+  //13 ->  "Control values u converted into Duty Cycle (ranging form -255 to +255)"
+  //14 ->  "Display of desired and current position data, error and resulting control values. Plus the x, y and z coordinate of the ToolTip"
+  //15 ->  "Computed desired position of servo values. Control the attached daVinci surgical tool"
+*/
 
+void SerialPrintData(int type) {
   float ax1_angle, ax2_angle, ax3_angle;
   switch (type) {
     case 0:

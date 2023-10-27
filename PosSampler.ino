@@ -1,3 +1,15 @@
+/*
+This function is implemented with the purpose to generate step responses for system identification
+It features a number of modes.
+Input Arguments:
+  -mode: Select the type of simulated target values, which includes:
+      -Step: step input
+      -Sine: sine signal of target value
+      -Ramp: No code implemented to simulate a ramp (delete or implement)
+      -MTM: this is the MTM mode, Signal is generated with MTM and sampled form SD card. Not useable anymore
+The individual Signals can be changed in frequency and magnitude.
+*/
+
 void PosSampler(String mode) {
   //Function variables
   int Sampler_select;

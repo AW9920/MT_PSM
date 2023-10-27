@@ -1,3 +1,12 @@
+/*PIDupdate --> Geneartion of control values for axes 1-3;
+Update routine that is called once per cycle to update the control values of each axis based on the target value
+which is handed over.
+Input Arguments:
+  -target: Desired Position (is received over UART)
+  -index: incrementing value that indicates the axis of interest.
+  -Mode: Allows to select between 'P', 'PI', 'PD' and 'PID' controller
+In addition the function features integrator clamping to avoid effects of integrator windup.
+*/
 void PIDupdate(float* target, int index, String mode) {
   //Function variables
   float current;
