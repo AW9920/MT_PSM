@@ -92,7 +92,7 @@ void PIDupdate(float* target, int index, String mode) {
       u = kp * e + kd * rate;
       break;
 
-    case 3:  //PID-mode
+    case 3:  //PID-mode (To-Do: NOT WORKING)
       if (!clamp_I[index]) {
         // Integrator
         integral[index] += e * dt;

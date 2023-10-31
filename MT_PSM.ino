@@ -34,10 +34,6 @@
 #define LS3_NC 18
 #define LS3_NO 19
 
-//#define MISO 50
-//#define MOSI 51
-//#define SCK 52
-//#define SS 53
 
 // Math constants
 #define PI 3.1415926535897932384626433832795
@@ -135,6 +131,7 @@ int home = 0;
 int retrieve = 1;
 int reference = 2;
 int move_zero = 3;
+int dmg_cnt;
 
 bool ref1, ref2, ref3;
 bool ref[3] = { ref1, ref2, ref3 };
@@ -335,6 +332,7 @@ void setup() {
         state = reference;
         refpos1 = true;
         ref_drive1 = true;  //Indicates current reference drive
+        dmg_cnt = 0;
       }
 
       else if (pinstatusNC == LOW && pinstatusNO == HIGH && !ref_drive1) {  //Does not touch endposition
@@ -342,21 +340,25 @@ void setup() {
         state = home;
         refpos1 = false;
         ref_drive1 = true;  //Indicates current reference drive
+        dmg_cnt = 0;
       }
 
-      else if (pinstatusNC == LOW && pinstatusNO == LOW) {
-        motor1.setSpeed(0);
-        Serial.print("Limit switch 1 is broken! Emergency stop!");
-        ref_drive1 = false;  //Indicates current reference drive
-        while (1) {};
+      else if ((pinstatusNC == LOW && pinstatusNO == LOW)) {
+        dmg_cnt++;
+        if (dmg_cnt >= 10) {
+          motor1.setSpeed(0);
+          Serial.print("Limit switch 1 is broken! Emergency stop!");
+          ref_drive1 = false;  //Indicates current reference drive
+          while (1) {};
+        }
       }
 
       //---------------------Phase check-------------------------
       if (p_counter1 == 0) {
-        speed1 = 8;
+        speed1 = 25;
         pos1 = 15;
       } else if (p_counter1 == 1) {
-        speed1 = 8;
+        speed1 = 25;
         pos1 = 10;
       } else {
         speed1 = 5;
@@ -454,10 +456,10 @@ void setup() {
 
       //---------------------Phase check-------------------------
       if (p_counter2 == 0) {
-        speed2 = 10;
+        speed2 = 20;
         pos2 = -20;
       } else if (p_counter2 == 1) {
-        speed2 = 10;
+        speed2 = 20;
         pos2 = -10;
       } else {
         speed2 = 5;
@@ -551,10 +553,10 @@ void setup() {
 
       //---------------------Phase check-------------------------
       if (p_counter3 == 0) {
-        speed3 = 180;
+        speed3 = 200;
         pos3 = 20;
       } else if (p_counter3 == 1) {
-        speed3 = 180;
+        speed3 = 200;
         pos3 = 10;
       } else {
         speed3 = 180;
@@ -632,13 +634,15 @@ void setup() {
     delay(1000);
   }
 
-  // -------------------------------------Home DC motors-------------------------------------
-  *target_pos[0] = 0, *target_pos[1] = 0, *target_pos[2] = 80;
-  c_mode = "P";
+  Catch_Tool();
 
+  RampUp_Homing();
+
+  // ---------------------------------End Setup Routine------------------------------------
   // Tell computer system is ready
   sys_ready = true;
-  fixDelay(200);
+  //c_mode = "PID";
+  //fixDelay(200);
 
   // Start timer
   stepResponsetimer = millis();
@@ -651,8 +655,7 @@ void loop() {
   if (sys_ready) {
 
     // Update control values of each motor; (Joint Space)
-    getDT();
-    LPFilter_DT();
+    //LPFilter_DT();
 
     //Extract data from string and update target position
     recvWithStartEndMarkers();
@@ -687,6 +690,7 @@ void loop() {
     servo_val[3] = constrain(servo_val[3], 0, 180);
 
     // Update desired position for joints 1, 2 and 3
+    getDT();
     for (int i = 0; i < 3; i++) {
       PIDupdate(target_pos[i], i, c_mode);
     }
